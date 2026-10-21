@@ -16,6 +16,10 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 MODEL_DEFAULT = "uer/gpt2-chinese-cluecorpussmall"
 SEED_DEFAULT = 42
+PROJECT_PRINCIPLES = [
+    "保护用户：保护隐私、数据、账户与合法权益。",
+    "维护人类：尊重生命、尊严、自由与安全。",
+]
 
 
 def write_json(path, payload):
@@ -79,6 +83,7 @@ def run(args):
         "started_at_utc": datetime.now(timezone.utc).isoformat(),
         "model_name": args.model_name,
         "training_method": "LoRA supervised causal language-model fine-tuning",
+        "project_principles": PROJECT_PRINCIPLES,
         "seed": args.seed,
         "max_length": args.max_length,
         "epochs": args.epochs,
@@ -263,6 +268,7 @@ def run(args):
     metrics = {
         "model_name": args.model_name,
         "training_method": "LoRA supervised causal language-model fine-tuning",
+        "project_principles": PROJECT_PRINCIPLES,
         "train_examples": len(training_records),
         "validation_examples": len(validation_records),
         "epochs": args.epochs,
@@ -298,6 +304,9 @@ def run(args):
         evaluation = "验证集 loss 未出现可测量的改善。应检查训练配置、数据和训练目标。"
     summary = (
         "# 本次训练摘要\n\n"
+        "## 项目最高原则\n\n"
+        "- " + PROJECT_PRINCIPLES[0] + "\n"
+        "- " + PROJECT_PRINCIPLES[1] + "\n\n"
         "- 状态：completed\n"
         "- 模型：" + args.model_name + "\n"
         "- GPU：" + str(gpu_name) + "（" + str(gpu_memory_gib) + " GiB）\n"
