@@ -1,0 +1,141 @@
+name: Daily GPT-2 T4 Training
+
+on:
+  schedule:
+    - cron: "0 1 * * *" # 09:00 Asia/Shanghai
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-gpt2-training
+  cancel-in-progress: false
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Initialize report and check secrets
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_DATE="$(TZ=Asia/Shanghai date +%F)"
+          RUN_DIR="reports/$RUN_DATE/run-$GITHUB_RUN_ID"
+          mkdir -p "$RUN_DIR/kaggle_output"
+          echo "RUN_DIR=$RUN_DIR" >> "$GITHUB_ENV"
+          if [[ -z "$KAGGLE_USERNAME" || ( -z "$KAGGLE_KEY" && -z "$KAGGLE_API_TOKEN" ) ]]; then
+            echo "KAGGLE_READY=false" >> "$GITHUB_ENV"
+            echo "BLOCKED_MISSING_KAGGLE_SECRETS" > "$RUN_DIR/status.txt"
+            echo "Set KAGGLE_USERNAME and either KAGGLE_KEY or KAGGLE_API_TOKEN in repository Actions Secrets." > "$RUN_DIR/preflight.txt"
+          else
+            echo "KAGGLE_READY=true" >> "$GITHUB_ENV"
+            echo "PENDING" > "$RUN_DIR/status.txt"
+            echo "Kaggle credentials detected; values were not logged." > "$RUN_DIR/preflight.txt"
+          fi
+
+      - name: Install Kaggle CLI
+        if: env.KAGGLE_READY == 'true'
+        run: python -m pip install --upgrade kaggle
+
+      - name: Prepare kernel metadata
+        if: env.KAGGLE_READY == 'true'
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+        run: python scripts/prepare_kaggle_kernel.py --username "$KAGGLE_USERNAME"
+
+      - name: Launch, monitor, and download
+        if: env.KAGGLE_READY == 'true'
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        shell: bash
+        run: |
+          set +e
+          KERNEL_ID="$KAGGLE_USERNAME/damoxingtest-gpt2-daily"
+          kaggle kernels push -p kaggle > "$RUN_DIR/kaggle_push.log" 2>&1
+          PUSH_CODE=$?
+          cat "$RUN_DIR/kaggle_push.log"
+          if [[ "$PUSH_CODE" -ne 0 ]]; then
+            echo "KAGGLE_PUSH_FAILED" > "$RUN_DIR/status.txt"
+            exit 0
+          fi
+
+          FINAL="TIMEOUT"
+          for ATTEMPT in $(seq 1 210); do
+            STATUS="$(kaggle kernels status "$KERNEL_ID" 2>&1)"
+            echo "[$ATTEMPT] $STATUS" >> "$RUN_DIR/kaggle_status.log"
+            echo "Kaggle status $ATTEMPT: $STATUS"
+            if echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.COMPLETE|Status: COMPLETE|^COMPLETE$'; then
+              FINAL="COMPLETE"; break
+            fi
+            if echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
+              FINAL="KAGGLE_STATUS_FAILED"; break
+            fi
+            sleep 60
+          done
+          echo "$FINAL" > "$RUN_DIR/status.txt"
+
+          if [[ "$FINAL" == "COMPLETE" ]]; then
+            kaggle kernels output "$KERNEL_ID" -p "$RUN_DIR/kaggle_output" --force > "$RUN_DIR/kaggle_output_download.log" 2>&1
+            DOWNLOAD_CODE=$?
+            cat "$RUN_DIR/kaggle_output_download.log"
+            if [[ "$DOWNLOAD_CODE" -ne 0 ]]; then
+              echo "KAGGLE_OUTPUT_UNAVAILABLE" > "$RUN_DIR/status.txt"
+            elif ! find "$RUN_DIR/kaggle_output" -type f -print -quit | grep -q .; then
+              echo "KAGGLE_OUTPUT_UNAVAILABLE" > "$RUN_DIR/status.txt"
+            fi
+          fi
+          exit 0
+
+      - name: Upload model weights and full outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpt2-training-${{ github.run_id }}
+          path: |
+            ${{ env.RUN_DIR }}/kaggle_output
+            ${{ env.RUN_DIR }}/kaggle_push.log
+            ${{ env.RUN_DIR }}/kaggle_status.log
+            ${{ env.RUN_DIR }}/kaggle_output_download.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Evaluate and sync report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${RUN_DIR:-}" ]]; then
+            RUN_DATE="$(TZ=Asia/Shanghai date +%F)"
+            RUN_DIR="reports/$RUN_DATE/run-$GITHUB_RUN_ID"
+            mkdir -p "$RUN_DIR"
+            echo "WORKFLOW_ABORTED_BEFORE_PREFLIGHT" > "$RUN_DIR/status.txt"
+          fi
+          [[ -f "$RUN_DIR/status.txt" ]] || echo "WORKFLOW_ABORTED_WITHOUT_STATUS" > "$RUN_DIR/status.txt"
+          python scripts/finalize_report.py --run-dir "$RUN_DIR"
+          rm -rf "$RUN_DIR/kaggle_output"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$RUN_DIR"
+          if ! git diff --cached --quiet; then
+            git commit -m "Record GPT-2 training run ${{ github.run_id }}"
+            git push origin HEAD:main
+          fi
+          FINAL_STATUS="$(cat "$RUN_DIR/final_status.txt")"
+          echo "Final status: $FINAL_STATUS"
+          if [[ "$FINAL_STATUS" != "SUCCESS" ]]; then
+            echo "::error::Training was not successful. See $RUN_DIR/report.md"
+            exit 1
+          fi
