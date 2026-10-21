@@ -25,9 +25,9 @@ jobs:
       - name: Initialize report and check secrets
         id: preflight
         env:
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.shipin }}
         shell: bash
         run: |
           set -euo pipefail
@@ -79,15 +79,15 @@ jobs:
       - name: Prepare kernel metadata
         if: steps.preflight.outputs.kaggle_ready == 'true'
         env:
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
         run: python scripts/prepare_kaggle_kernel.py --username "$KAGGLE_USERNAME"
 
       - name: Launch, monitor, and download
         if: steps.preflight.outputs.kaggle_ready == 'true'
         env:
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.shipin }}
         shell: bash
         run: |
           set +e
