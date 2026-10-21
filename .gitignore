@@ -218,3 +218,25 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# Training project credentials and generated binaries
+kaggle.json
+**/kaggle.json
+kaggle/kernel-metadata.json
+*.pem
+*.key
+*.pt
+*.pth
+*.safetensors
+*.bin
+reports/**/kaggle_output/
+
+# Keep audit logs in dated training reports despite the generic *.log rule
+!reports/
+!reports/**/
+!reports/**/*.log
+!reports/**/training.log
+!reports/**/kaggle_push.log
+!reports/**/kaggle_status.log
+!reports/**/kaggle_output_download.log
