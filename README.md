@@ -24,8 +24,8 @@ GPT-2 微调只是实验原型。小规模种子语料上的 loss 下降不代�
 
 1. 在 Kaggle 账户的 Settings / API 中创建 API 凭据。
 2. 在本仓库 Settings → Secrets and variables → Actions 中添加：
-   - KAGGLE_USERNAME：Kaggle 用户名。
-   - KAGGLE_KEY：旧式 API Key；或者添加 KAGGLE_API_TOKEN：当前 API Token。至少提供其中一种认证凭据，并始终提供 KAGGLE_USERNAME。
+   - KAGGLE_USERNAME：可选；默认使用已配置过的 Kaggle 用户名 mjw3177109。
+   - KAGGLE_KEY：旧式 API Key；或者添加 KAGGLE_API_TOKEN：当前 API Token；也兼容 secret 名称 shipin。至少提供一种认证凭据。
 3. 不要把 API 凭据写入代码、Notebook、日志或提交记录。
 4. 打开 Actions，手动运行 Daily GPT-2 T4 Training。第一次运行可能因 Kaggle 审核、配额或 GPU 不可用而失败。
 5. 查看 reports/ 下的日期报告，以及 Actions 运行页中的模型 Artifact。
@@ -46,3 +46,5 @@ GPT-2 微调只是实验原型。小规模种子语料上的 loss 下降不代�
 ## 训练是否跨日累积
 
 当前版本每天从指定的基础 GPT-2 权重重新执行同一组小规模种子语料微调，目的是建立可重复的基线和每日运行审计；它不会自动接续前一天的 Adapter。原因是当前语料很小，反复累积训练容易过拟合。待新增经过许可和审核的数据、固定验证集与回滚标准后，再单独启用有版本控制的持续训练。
+
+注意：GitHub Secrets 按仓库隔离。若 shipin 目前只存在于另一个仓库，damoxingtest 不会自动读取它；需要在本仓库的 Actions Secrets 中重新添加同一凭据，或创建新的 Kaggle API Token 并保存为 KAGGLE_API_TOKEN。不要把 token 发到聊天或写入源码。
