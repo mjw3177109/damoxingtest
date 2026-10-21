@@ -30,6 +30,15 @@ def write_json(path, payload):
     )
 
 
+def write_stage(output_dir, filename, title, body):
+    stage_dir = Path(output_dir) / "stages"
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    (stage_dir / (filename + ".md")).write_text(
+        "# " + title + "\n\n" + body + "\n",
+        encoding="utf-8",
+    )
+
+
 def setup_logger(output_dir):
     logger = logging.getLogger("gpt2_lora_training")
     logger.setLevel(logging.INFO)
@@ -101,18 +110,23 @@ def run(args):
         "python_version": sys.version,
     }
     write_json(output_dir / "run_metadata.json", metadata)
+    write_stage(output_dir, "stage0_environment", "阶段 0：环境与 GPU 检查", "状态：检查中。目标为 NVIDIA T4，约 16GB 显存。实际 GPU：" + str(gpu_name) + "；显存 GiB：" + str(gpu_memory_gib) + "。")
     logger.info("Starting GPT-2 LoRA training.")
     logger.info("Model: %s", args.model_name)
     logger.info("CUDA available: %s", cuda_available)
     logger.info("GPU: %s; memory GiB: %s", gpu_name, gpu_memory_gib)
 
     if args.require_gpu and not cuda_available:
+        write_stage(output_dir, "stage0_environment", "阶段 0：环境与 GPU 检查", "状态：阻塞。需要 GPU，但 CUDA 不可用。未开始训练。")
         raise RuntimeError("GPU is required but CUDA is unavailable.")
     if args.require_t4:
         if not cuda_available:
+            write_stage(output_dir, "stage0_environment", "阶段 0：环境与 GPU 检查", "状态：阻塞。需要 NVIDIA T4，但没有 CUDA GPU。未开始训练。")
             raise RuntimeError("NVIDIA T4 is required but no CUDA GPU is available.")
         if "T4" not in str(gpu_name).upper():
+            write_stage(output_dir, "stage0_environment", "阶段 0：环境与 GPU 检查", "状态：阻塞。目标为 NVIDIA T4，实际分配为 " + str(gpu_name) + "。未开始训练。")
             raise RuntimeError("NVIDIA T4 is required; actual GPU is: " + str(gpu_name))
+    write_stage(output_dir, "stage0_environment", "阶段 0：环境与 GPU 检查", "状态：通过。实际 GPU：" + str(gpu_name) + "；显存 GiB：" + str(gpu_memory_gib) + "。")
 
     corpus_path = Path(args.data).resolve()
     if not corpus_path.exists():
@@ -145,6 +159,7 @@ def run(args):
         "Loaded %s examples: train=%s, validation=%s",
         len(records), len(training_records), len(validation_records)
     )
+    write_stage(output_dir, "stage1_data_prep", "阶段 1：数据准备", "状态：完成。语料记录数：" + str(len(records)) + "；训练样本：" + str(len(training_records)) + "；验证样本：" + str(len(validation_records)) + "；数据 SHA-256：" + corpus_sha256 + "。数据来源为仓库内人工编写的安全与人类福祉种子语料。")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, use_fast=True)
     if tokenizer.eos_token is None:
@@ -228,9 +243,12 @@ def run(args):
     base_eval = trainer.evaluate()
     base_loss = float(base_eval["eval_loss"])
     logger.info("Base validation loss: %.6f; PPL: %s", base_loss, safe_ppl(base_loss))
+    write_stage(output_dir, "stage2_base_evaluation", "阶段 2：基础模型基线评估", "状态：完成。基线验证集 loss：" + str(round(base_loss, 6)) + "；基线 PPL：" + str(safe_ppl(base_loss)) + "。验证集未用于梯度更新。")
 
     logger.info("Beginning LoRA fine-tuning.")
     train_result = trainer.train()
+    train_loss_stage = train_result.metrics.get("train_loss")
+    write_stage(output_dir, "stage3_lora_training", "阶段 3：LoRA 微调", "状态：完成。训练轮数：" + str(args.epochs) + "；学习率：" + str(args.learning_rate) + "；LoRA rank：" + str(args.lora_rank) + "；训练 loss：" + str(train_loss_stage) + "。Adapter 保存在本次运行输出中。")
     logger.info("Fine-tuning finished; evaluating again.")
     final_eval = trainer.evaluate()
     final_loss = float(final_eval["eval_loss"])
@@ -300,6 +318,7 @@ def run(args):
     }
     write_json(output_dir / "metrics.json", metrics)
     write_json(output_dir / "samples.json", samples)
+    write_stage(output_dir, "stage4_evaluation", "阶段 4：评估与模型输出", "状态：完成。基线验证 loss：" + str(round(base_loss, 6)) + "；微调后验证 loss：" + str(round(final_loss, 6)) + "；验证 loss 相对改善：" + str(loss_change) + "%；生成样例数：" + str(len(samples)) + "。所有样例都必须人工审核，指标不构成安全认证。")
     write_json(output_dir / "training_status.json", {
         "status": "completed",
         "finished_at_utc": datetime.now(timezone.utc).isoformat(),
