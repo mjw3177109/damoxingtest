@@ -23,6 +23,7 @@ jobs:
           python-version: "3.11"
 
       - name: Initialize report and check secrets
+        id: preflight
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
@@ -34,28 +35,31 @@ jobs:
           RUN_DIR="reports/$RUN_DATE/run-$GITHUB_RUN_ID"
           mkdir -p "$RUN_DIR/kaggle_output"
           echo "RUN_DIR=$RUN_DIR" >> "$GITHUB_ENV"
+          echo "run_dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
           if [[ -z "$KAGGLE_USERNAME" || ( -z "$KAGGLE_KEY" && -z "$KAGGLE_API_TOKEN" ) ]]; then
             echo "KAGGLE_READY=false" >> "$GITHUB_ENV"
+            echo "kaggle_ready=false" >> "$GITHUB_OUTPUT"
             echo "BLOCKED_MISSING_KAGGLE_SECRETS" > "$RUN_DIR/status.txt"
             echo "Set KAGGLE_USERNAME and either KAGGLE_KEY or KAGGLE_API_TOKEN in repository Actions Secrets." > "$RUN_DIR/preflight.txt"
           else
             echo "KAGGLE_READY=true" >> "$GITHUB_ENV"
+            echo "kaggle_ready=true" >> "$GITHUB_OUTPUT"
             echo "PENDING" > "$RUN_DIR/status.txt"
             echo "Kaggle credentials detected; values were not logged." > "$RUN_DIR/preflight.txt"
           fi
 
       - name: Install Kaggle CLI
-        if: env.KAGGLE_READY == 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true'
         run: python -m pip install --upgrade kaggle
 
       - name: Prepare kernel metadata
-        if: env.KAGGLE_READY == 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
         run: python scripts/prepare_kaggle_kernel.py --username "$KAGGLE_USERNAME"
 
       - name: Launch, monitor, and download
-        if: env.KAGGLE_READY == 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
@@ -105,10 +109,10 @@ jobs:
         with:
           name: gpt2-training-${{ github.run_id }}
           path: |
-            ${{ env.RUN_DIR }}/kaggle_output
-            ${{ env.RUN_DIR }}/kaggle_push.log
-            ${{ env.RUN_DIR }}/kaggle_status.log
-            ${{ env.RUN_DIR }}/kaggle_output_download.log
+            ${{ steps.preflight.outputs.run_dir }}/kaggle_output
+            ${{ steps.preflight.outputs.run_dir }}/kaggle_push.log
+            ${{ steps.preflight.outputs.run_dir }}/kaggle_status.log
+            ${{ steps.preflight.outputs.run_dir }}/kaggle_output_download.log
           if-no-files-found: warn
           retention-days: 30
 
