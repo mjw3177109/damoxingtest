@@ -2,6 +2,7 @@
 """Turn collected Kaggle outputs into an honest, auditable run report."""
 import argparse
 import json
+import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -67,6 +68,11 @@ def main():
     report.append("")
     report.append("- 生成时间（UTC）： " + datetime.now(timezone.utc).isoformat())
     report.append("- 运行目录： " + str(run_dir))
+    repository = os.environ.get("GITHUB_REPOSITORY", "mjw3177109/damoxingtest")
+    run_id = os.environ.get("GITHUB_RUN_ID")
+    if run_id:
+        report.append("- GitHub Actions 运行记录： https://github.com/" + repository + "/actions/runs/" + run_id)
+        report.append("- 模型与完整输出 Artifact： https://github.com/" + repository + "/actions/runs/" + run_id + "/artifacts")
     report.append("- Kaggle 任务状态： " + status)
     report.append("- 最终判定： **" + final_status + "**")
     report.append("")
