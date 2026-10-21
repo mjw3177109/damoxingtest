@@ -34,6 +34,7 @@ def main():
     status = status_file.read_text(encoding="utf-8").strip().splitlines()[0] if status_file.exists() else "UNKNOWN"
 
     copied = {}
+    stage_files = []
     for filename in [
         "training.log", "metrics.json", "samples.json", "run_metadata.json",
         "summary.md", "training_status.json",
@@ -44,6 +45,15 @@ def main():
             if matches[0].resolve() != target.resolve():
                 shutil.copy2(matches[0], target)
             copied[filename] = target
+
+    stage_dirs = list(output_dir.rglob("stages")) if output_dir.exists() else []
+    for source_stage_dir in stage_dirs:
+        for source_stage in sorted(source_stage_dir.glob("*.md")):
+            target_stage_dir = run_dir / "stages"
+            target_stage_dir.mkdir(parents=True, exist_ok=True)
+            target_stage = target_stage_dir / source_stage.name
+            shutil.copy2(source_stage, target_stage)
+            stage_files.append(target_stage.name)
 
     training_status = read_json(run_dir / "training_status.json") if (run_dir / "training_status.json").exists() else {}
     metrics = read_json(run_dir / "metrics.json") if (run_dir / "metrics.json").exists() else {}
@@ -118,6 +128,14 @@ def main():
         report.append("")
         report.append("本次运行没有足够的实测指标支持模型质量结论。请先解决凭据、GPU、配额、网络或训练脚本问题，再重新运行。")
 
+    report.append("")
+    report.append("## 阶段记录")
+    report.append("")
+    if stage_files:
+        for stage_name in sorted(set(stage_files)):
+            report.append("- stages/" + stage_name)
+    else:
+        report.append("没有找到已完成阶段的独立说明文件。")
     report.append("")
     report.append("## 模型输出与日志")
     report.append("")
