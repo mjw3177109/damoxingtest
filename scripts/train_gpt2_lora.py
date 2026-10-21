@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Reproducible small-scale Chinese GPT-2 LoRA fine-tuning and evaluation."""
 import argparse
+import hashlib
 import json
 import logging
 import math
@@ -116,6 +117,10 @@ def run(args):
     corpus_path = Path(args.data).resolve()
     if not corpus_path.exists():
         raise FileNotFoundError("Training corpus not found: " + str(corpus_path))
+    corpus_sha256 = hashlib.sha256(corpus_path.read_bytes()).hexdigest()
+    metadata["training_data_sha256"] = corpus_sha256
+    write_json(output_dir / "run_metadata.json", metadata)
+    logger.info("Training corpus SHA-256: %s", corpus_sha256)
 
     records = []
     for line_number, line in enumerate(corpus_path.read_text(encoding="utf-8").splitlines(), 1):
@@ -164,6 +169,10 @@ def run(args):
 
     logger.info("Loading base model weights.")
     model = AutoModelForCausalLM.from_pretrained(args.model_name)
+    resolved_model_commit = getattr(model.config, "_commit_hash", None)
+    metadata["resolved_model_commit"] = resolved_model_commit
+    write_json(output_dir / "run_metadata.json", metadata)
+    logger.info("Resolved model commit: %s", resolved_model_commit)
     if model.get_input_embeddings().num_embeddings != len(tokenizer):
         model.resize_token_embeddings(len(tokenizer))
     model.config.pad_token_id = tokenizer.pad_token_id
@@ -269,6 +278,8 @@ def run(args):
         "model_name": args.model_name,
         "training_method": "LoRA supervised causal language-model fine-tuning",
         "project_principles": PROJECT_PRINCIPLES,
+        "training_data_sha256": corpus_sha256,
+        "resolved_model_commit": resolved_model_commit,
         "train_examples": len(training_records),
         "validation_examples": len(validation_records),
         "epochs": args.epochs,
