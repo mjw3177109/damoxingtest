@@ -1,0 +1,20 @@
+{
+  "checked_at_utc": "2026-10-22T15:33:29.206226+00:00",
+  "run_id": "39795982121",
+  "candidate_status": "failed",
+  "promotion_approved": false,
+  "reasons": [
+    "metrics.json missing",
+    "samples.json missing",
+    "LoRA adapter files missing",
+    "training_status is not completed",
+    "fixed-holdout validation loss did not improve",
+    "fewer than 10 fixed holdout generation samples",
+    "generation quality heuristic passed only 0/0 samples"
+  ],
+  "meaningful_generation_samples": 0,
+  "generation_sample_count": 0,
+  "eval_loss_improvement_pct": null,
+  "training_data_sha256": null,
+  "eval_data_sha256": null
+}
