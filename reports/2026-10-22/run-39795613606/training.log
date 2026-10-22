@@ -1,0 +1,19 @@
+2026-10-22 15:01:34,733 | INFO | Starting GPT-2 LoRA training.
+2026-10-22 15:01:34,733 | INFO | Model: uer/gpt2-chinese-cluecorpussmall
+2026-10-22 15:01:34,734 | INFO | CUDA available: True
+2026-10-22 15:01:34,734 | INFO | GPU: Tesla T4; memory GiB: 14.56
+2026-10-22 15:01:34,735 | INFO | Training corpus SHA-256: ad2dfcb5f4549981d555b570e255f54b98c7162c52d46f72af147dc3a035847c
+2026-10-22 15:01:34,736 | INFO | Training corpus SHA-256: ad2dfcb5f4549981d555b570e255f54b98c7162c52d46f72af147dc3a035847c
+2026-10-22 15:01:34,736 | INFO | Fixed evaluation corpus SHA-256: 5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f
+2026-10-22 15:01:34,736 | INFO | Loaded fixed corpora: train=85, validation=24
+2026-10-22 15:01:35,504 | INFO | Loading base model weights.
+2026-10-22 15:01:45,166 | INFO | Resolved model commit: c2c0249d8a2731f269414cc3b22dff021f8e07a3
+2026-10-22 15:01:45,217 | INFO | No approved prior adapter found; training a new candidate from the base model.
+2026-10-22 15:01:47,024 | ERROR | Training pipeline failed: name 'DataCollatorForLanguageModeling' is not defined
+Traceback (most recent call last):
+  File "/kaggle/temp/damoxingtest/scripts/train_gpt2_lora.py", line 549, in main
+    return run(args)
+  File "/kaggle/temp/damoxingtest/scripts/train_gpt2_lora.py", line 395, in run
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'DataCollatorForLanguageModeling' is not defined
