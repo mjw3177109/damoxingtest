@@ -71,6 +71,7 @@ def run(args):
     from datasets import Dataset
     from peft import LoraConfig, TaskType, get_peft_model
     from transformers import (
+        TrainerCallback,
         AutoModelForCausalLM,
         AutoTokenizer,
         DataCollatorForLanguageModeling,
@@ -78,6 +79,15 @@ def run(args):
         TrainingArguments,
         set_seed,
     )
+
+    class FileLoggingCallback(TrainerCallback):
+        def __init__(self, target_logger):
+            self.target_logger = target_logger
+
+        def on_log(self, args, state, control, logs=None, **kwargs):
+            if logs:
+                self.target_logger.info("Trainer metrics at step %s: %s", state.global_step, logs)
+            return control
 
     set_seed(args.seed)
     random.seed(args.seed)
@@ -246,8 +256,10 @@ def run(args):
     write_stage(output_dir, "stage2_base_evaluation", "阶段 2：基础模型基线评估", "状态：完成。基线验证集 loss：" + str(round(base_loss, 6)) + "；基线 PPL：" + str(safe_ppl(base_loss)) + "。验证集未用于梯度更新。")
 
     logger.info("Beginning LoRA fine-tuning.")
+    trainer.add_callback(FileLoggingCallback(logger))
     train_result = trainer.train()
     train_loss_stage = train_result.metrics.get("train_loss")
+    logger.info("Training completed: global_step=%s; train_loss=%s", train_result.global_step, train_loss_stage)
     write_stage(output_dir, "stage3_lora_training", "阶段 3：LoRA 微调", "状态：完成。训练轮数：" + str(args.epochs) + "；学习率：" + str(args.learning_rate) + "；LoRA rank：" + str(args.lora_rank) + "；训练 loss：" + str(train_loss_stage) + "。Adapter 保存在本次运行输出中。")
     logger.info("Fine-tuning finished; evaluating again.")
     final_eval = trainer.evaluate()
@@ -310,6 +322,7 @@ def run(args):
         "final_eval_ppl": safe_ppl(final_loss),
         "eval_loss_improvement_pct": round((base_loss - final_loss) / max(abs(base_loss), 1e-12) * 100, 3),
         "train_loss": float(train_result.metrics.get("train_loss", 0.0)),
+        "train_steps": int(train_result.global_step),
         "train_runtime_seconds": duration,
         "gpu_name": gpu_name,
         "gpu_memory_gib": gpu_memory_gib,
@@ -318,6 +331,7 @@ def run(args):
     }
     write_json(output_dir / "metrics.json", metrics)
     write_json(output_dir / "samples.json", samples)
+    loss_change = metrics["eval_loss_improvement_pct"]
     write_stage(output_dir, "stage4_evaluation", "阶段 4：评估与模型输出", "状态：完成。基线验证 loss：" + str(round(base_loss, 6)) + "；微调后验证 loss：" + str(round(final_loss, 6)) + "；验证 loss 相对改善：" + str(loss_change) + "%；生成样例数：" + str(len(samples)) + "。所有样例都必须人工审核，指标不构成安全认证。")
     write_json(output_dir / "training_status.json", {
         "status": "completed",
@@ -325,7 +339,6 @@ def run(args):
         "message": "Training, evaluation, and sample generation completed.",
     })
 
-    loss_change = metrics["eval_loss_improvement_pct"]
     if loss_change > 0:
         evaluation = "验证集 loss 在本次小样本上下降，但仍需检查生成质量与过拟合；不能据此宣称模型已具备通用能力或安全性。"
     elif loss_change < 0:

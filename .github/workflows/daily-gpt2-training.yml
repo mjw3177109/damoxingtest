@@ -138,8 +138,8 @@ jobs:
           FINAL="UNKNOWN"
           if [[ "$STATUS_CODE" -eq 0 ]]; then
             if echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.COMPLETE|Status: COMPLETE|^COMPLETE$'; then
-              FINAL="COMPLETE"
-              echo "Existing kernel is complete; reusing its outputs instead of submitting another run."
+              NEED_PUSH="true"
+              echo "Existing kernel is complete; submitting a fresh version to train the current repository code."
             elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(RUNNING|QUEUED|PENDING)|Status: (RUNNING|QUEUED|PENDING)'; then
               FINAL="RUNNING"
               echo "Existing kernel is active; monitoring it without duplicate submission."
@@ -238,7 +238,21 @@ jobs:
           git add "$RUN_DIR"
           if ! git diff --cached --quiet; then
             git commit -m "Record GPT-2 training run ${{ github.run_id }}"
-            git push origin HEAD:main
+            PUSH_OK="false"
+            for ATTEMPT in 1 2 3; do
+              git fetch origin main
+              git rebase origin/main
+              if git push origin HEAD:main; then
+                PUSH_OK="true"
+                break
+              fi
+              echo "Report push attempt $ATTEMPT failed; retrying after rebase."
+              sleep $((ATTEMPT * 2))
+            done
+            if [[ "$PUSH_OK" != "true" ]]; then
+              echo "::error::Could not sync the report to main after three attempts."
+              exit 1
+            fi
           fi
           FINAL_STATUS="$(cat "$RUN_DIR/final_status.txt")"
           echo "Final status: $FINAL_STATUS"

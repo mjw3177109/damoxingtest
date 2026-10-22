@@ -40,6 +40,7 @@ def main():
         "summary.md", "training_status.json",
     ]:
         matches = list(output_dir.rglob(filename)) if output_dir.exists() else []
+        matches.sort(key=lambda p: (0 if "training_output" in p.parts else 1, len(p.parts)))
         if matches:
             target = run_dir / filename
             if matches[0].resolve() != target.resolve():
