@@ -8,13 +8,7 @@ on:
     branches:
       - main
     paths:
-      - "scripts/**"
-      - "kaggle/**"
       - "data/**"
-      - "requirements-kaggle.txt"
-      - "TRAINING_METHOD.md"
-      - "小白.md"
-      - "README.md"
 
 permissions:
   contents: write
@@ -250,6 +244,8 @@ jobs:
                   adapter_dir = candidate_adapter
               else:
                   reasons.append("LoRA adapter files missing")
+          if status.get("skipped_no_changes"):
+              reasons.append("No new training candidate was created; prior evidence was reused.")
           if status.get("status") != "completed":
               reasons.append("training_status is not completed")
           improvement = metrics.get("eval_loss_improvement_pct")
@@ -360,7 +356,7 @@ jobs:
           fi
           FINAL_STATUS="$(cat "$RUN_DIR/final_status.txt")"
           echo "Final status: $FINAL_STATUS"
-          if [[ "$FINAL_STATUS" != "SUCCESS" ]]; then
+          if [[ "$FINAL_STATUS" != "SUCCESS" && "$FINAL_STATUS" != "SKIPPED_NO_CHANGES" ]]; then
             echo "::error::Training was not successful. See $RUN_DIR/report.md"
             exit 1
           fi

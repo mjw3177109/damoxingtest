@@ -68,6 +68,8 @@ def main():
         final_status = status
     elif training_status.get("status") == "failed":
         final_status = "TRAINING_FAILED"
+    elif training_status.get("skipped_no_changes"):
+        final_status = "SKIPPED_NO_CHANGES"
     elif status == "COMPLETE" and training_status.get("status") == "completed" and metrics:
         final_status = "SUCCESS"
     elif status == "COMPLETE":
@@ -87,6 +89,9 @@ def main():
         report.append("- 模型与完整输出 Artifact： https://github.com/" + repository + "/actions/runs/" + run_id + "/artifacts")
     report.append("- Kaggle 任务状态： " + status)
     report.append("- 最终判定： **" + final_status + "**")
+    if training_status.get("skipped_no_changes"):
+        report.append("- 本次训练动作：跳过重复训练；复用已有指标与样例，未进行新的 GPU 参数更新。")
+        report.append("- 复用来源： " + str(training_status.get("reused_from_run", "历史成功运行")))
     report.append("")
     report.append("## 本次结果")
     report.append("")
@@ -169,7 +174,9 @@ def main():
     report.append("")
     report.append("## 下一步计划")
     report.append("")
-    if final_status == "SUCCESS":
+    if final_status == "SKIPPED_NO_CHANGES":
+        report.append("本次训练集、评估集和训练方案与最近一次完整运行一致，因此跳过重复 GPU 训练。新增数据或训练方案发生变化后再启动新训练。")
+    elif final_status == "SUCCESS":
         report.append("1. 人工复核 samples.json，检查事实性、隐私、伤害风险、偏见和是否遵循指令。")
         report.append("2. 比较验证集指标与上一版本，不因单次 loss 变化就直接宣称模型进步。")
         report.append("3. 逐步扩充有明确许可、经过清洗和审阅的数据，并建立固定测试集。")

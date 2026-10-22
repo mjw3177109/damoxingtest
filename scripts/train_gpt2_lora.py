@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import random
+import shutil
 import sys
 import time
 import traceback
@@ -53,6 +54,67 @@ def setup_logger(output_dir):
     return logger
 
 
+def training_recipe_hash():
+    root = Path(__file__).resolve().parent.parent
+    digest = hashlib.sha256()
+    for relative in ("scripts/train_gpt2_lora.py", "kaggle/gpt2_training.ipynb", "requirements-kaggle.txt"):
+        candidate = root / relative
+        digest.update(relative.encode("utf-8"))
+        if candidate.is_file():
+            digest.update(candidate.read_bytes())
+        else:
+            digest.update(b"<missing>")
+    return digest.hexdigest()
+
+
+def find_reusable_run(args):
+    if getattr(args, "force_retrain", False):
+        return None
+    root = Path(__file__).resolve().parent.parent
+    train_path = Path(args.data)
+    eval_path = Path(args.eval_data)
+    if not train_path.is_absolute():
+        train_path = root / train_path
+    if not eval_path.is_absolute():
+        eval_path = root / eval_path
+    if not train_path.is_file() or not eval_path.is_file():
+        return None
+    train_hash = hashlib.sha256(train_path.read_bytes()).hexdigest()
+    eval_hash = hashlib.sha256(eval_path.read_bytes()).hexdigest()
+    recipe_hash = training_recipe_hash()
+    candidates = sorted(root.glob("reports/*/run-*/run_metadata.json"), reverse=True)
+    for metadata_path in candidates:
+        try:
+            previous = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if previous.get("training_data_sha256") != train_hash:
+                continue
+            if previous.get("eval_data_sha256") != eval_hash:
+                continue
+            if previous.get("training_recipe_sha256") != recipe_hash:
+                continue
+            run_dir = metadata_path.parent
+            status_path = run_dir / "training_status.json"
+            metrics_path = run_dir / "metrics.json"
+            samples_path = run_dir / "samples.json"
+            if not (status_path.is_file() and metrics_path.is_file() and samples_path.is_file()):
+                continue
+            previous_status = json.loads(status_path.read_text(encoding="utf-8"))
+            if previous_status.get("status") != "completed" or previous_status.get("skipped_no_changes"):
+                continue
+            samples = json.loads(samples_path.read_text(encoding="utf-8"))
+            if not isinstance(samples, list) or len(samples) < 10:
+                continue
+            return {
+                "run_dir": run_dir,
+                "train_hash": train_hash,
+                "eval_hash": eval_hash,
+                "recipe_hash": recipe_hash,
+            }
+        except Exception:
+            continue
+    return None
+
+
 def safe_ppl(loss):
     if loss is None or not math.isfinite(float(loss)):
         return None
@@ -64,8 +126,40 @@ def safe_ppl(loss):
 def run(args):
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    logger = setup_logger(output_dir)
     start_time = time.time()
+
+    reusable = find_reusable_run(args)
+    if reusable is not None:
+        source_dir = reusable["run_dir"]
+        for filename in ("metrics.json", "samples.json", "summary.md", "run_metadata.json"):
+            shutil.copy2(source_dir / filename, output_dir / filename)
+        if (source_dir / "training.log").is_file():
+            shutil.copy2(source_dir / "training.log", output_dir / "previous_training.log")
+        if (source_dir / "stages").is_dir():
+            shutil.copytree(source_dir / "stages", output_dir / "stages", dirs_exist_ok=True)
+        reused_metadata = json.loads((output_dir / "run_metadata.json").read_text(encoding="utf-8"))
+        reused_metadata["source_run_gpu_name"] = reused_metadata.get("gpu_name")
+        reused_metadata["source_run_gpu_memory_gib"] = reused_metadata.get("gpu_memory_gib")
+        reused_metadata["gpu_name"] = None
+        reused_metadata["gpu_memory_gib"] = None
+        reused_metadata["training_skipped"] = True
+        reused_metadata["training_recipe_sha256"] = reusable["recipe_hash"]
+        reused_metadata["reused_from_run"] = str(source_dir.relative_to(Path(__file__).resolve().parent.parent))
+        reused_metadata["current_run_performed_gpu_training"] = False
+        write_json(output_dir / "run_metadata.json", reused_metadata)
+        logger = setup_logger(output_dir)
+        logger.info("No data or training-recipe changes detected; skipping duplicate GPU training.")
+        logger.info("Reusing evaluation evidence from %s", reused_metadata["reused_from_run"])
+        write_json(output_dir / "training_status.json", {
+            "status": "skipped_no_changes",
+            "skipped_no_changes": True,
+            "finished_at_utc": datetime.now(timezone.utc).isoformat(),
+            "reused_from_run": reused_metadata["reused_from_run"],
+            "message": "No new data or training-recipe change; previous evidence was reused and no model training was performed."
+        })
+        return 0
+
+    logger = setup_logger(output_dir)
 
     import torch
     from datasets import Dataset
@@ -102,6 +196,7 @@ def run(args):
         "started_at_utc": datetime.now(timezone.utc).isoformat(),
         "model_name": args.model_name,
         "training_method": "LoRA supervised causal language-model fine-tuning",
+        "training_recipe_sha256": training_recipe_hash(),
         "project_principles": PROJECT_PRINCIPLES,
         "seed": args.seed,
         "max_length": args.max_length,
@@ -350,6 +445,7 @@ def run(args):
         "project_principles": PROJECT_PRINCIPLES,
         "training_data_sha256": corpus_sha256,
         "eval_data_sha256": eval_sha256,
+        "training_recipe_sha256": training_recipe_hash(),
         "resolved_model_commit": resolved_model_commit,
         "starting_adapter_loaded": starting_adapter_loaded,
         "starting_adapter_sha256": starting_adapter_sha256,
@@ -418,6 +514,7 @@ def main():
     parser.add_argument("--data", default="data/safety_humanity_train_v2.jsonl")
     parser.add_argument("--eval-data", default="data/safety_humanity_eval_v1.jsonl")
     parser.add_argument("--adapter-path", default=None, help="Path to a previously approved LoRA adapter to continue training from.")
+    parser.add_argument("--force-retrain", action="store_true", help="Ignore matching previous run evidence and train again.")
     parser.add_argument("--output-dir", default="training_output")
     parser.add_argument("--seed", type=int, default=SEED_DEFAULT)
     parser.add_argument("--max-length", type=int, default=256)
