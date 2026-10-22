@@ -20,6 +20,9 @@ on:
 permissions:
   contents: write
 
+env:
+  KAGGLE_KERNEL_SLUG: damoxingtest-gpt-2-daily-training
+
 concurrency:
   group: daily-gpt2-training
   cancel-in-progress: false
@@ -92,7 +95,25 @@ jobs:
         if: steps.preflight.outputs.kaggle_ready == 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
-        run: python scripts/prepare_kaggle_kernel.py --username "$KAGGLE_USERNAME"
+        run: python scripts/prepare_kaggle_kernel.py --username "$KAGGLE_USERNAME" --slug "$KAGGLE_KERNEL_SLUG"
+
+      - name: Validate Kaggle title and kernel ID
+        if: steps.preflight.outputs.kaggle_ready == 'true'
+        env:
+          KAGGLE_USERNAME: \${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/prepare_kaggle_kernel.py --username "$KAGGLE_USERNAME" --slug "$KAGGLE_KERNEL_SLUG"
+          python - <<'PY'
+          import json, re
+          from pathlib import Path
+          metadata = json.loads(Path("kaggle/kernel-metadata.json").read_text(encoding="utf-8"))
+          title_slug = re.sub(r"[^a-z0-9]+", "-", metadata["title"].lower()).strip("-")
+          id_slug = metadata["id"].rsplit("/", 1)[-1]
+          assert id_slug == title_slug, (id_slug, title_slug)
+          print("Kaggle title/ID consistency verified:", metadata["id"])
+          PY
 
       - name: Launch, monitor, and download
         if: steps.preflight.outputs.kaggle_ready == 'true'
@@ -103,7 +124,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          KERNEL_ID="$KAGGLE_USERNAME/damoxingtest-gpt2-daily"
+          KERNEL_ID="$KAGGLE_USERNAME/$KAGGLE_KERNEL_SLUG"
           kaggle kernels push -p kaggle > "$RUN_DIR/kaggle_push.log" 2>&1
           PUSH_CODE=$?
           cat "$RUN_DIR/kaggle_push.log"
