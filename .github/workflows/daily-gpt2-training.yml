@@ -24,8 +24,8 @@ env:
   KAGGLE_KERNEL_SLUG: damoxingtest-gpt-2-daily-training
 
 concurrency:
-  group: daily-gpt2-training
-  cancel-in-progress: true
+  group: daily-gpt2-training-canonical-kernel
+  cancel-in-progress: false
 
 jobs:
   train:
