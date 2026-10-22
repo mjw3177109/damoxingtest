@@ -147,11 +147,21 @@ def run(args):
         reused_metadata["reused_from_run"] = str(source_dir.relative_to(Path(__file__).resolve().parent.parent))
         reused_metadata["current_run_performed_gpu_training"] = False
         write_json(output_dir / "run_metadata.json", reused_metadata)
+        reused_metrics = json.loads((output_dir / "metrics.json").read_text(encoding="utf-8"))
+        reused_metrics["training_skipped"] = True
+        reused_metrics["reused_from_run"] = reused_metadata["reused_from_run"]
+        reused_metrics["current_run_performed_gpu_training"] = False
+        reused_metrics["train_steps"] = 0
+        reused_metrics["train_loss"] = None
+        reused_metrics["gpu_name"] = None
+        reused_metrics["gpu_memory_gib"] = None
+        reused_metrics["interpretation"] = "NO NEW TRAINING: historical evaluation metrics reused from " + reused_metadata["reused_from_run"] + ". These values are not new measurements for this run."
+        write_json(output_dir / "metrics.json", reused_metrics)
         logger = setup_logger(output_dir)
         logger.info("No data or training-recipe changes detected; skipping duplicate GPU training.")
         logger.info("Reusing evaluation evidence from %s", reused_metadata["reused_from_run"])
         write_json(output_dir / "training_status.json", {
-            "status": "skipped_no_changes",
+            "status": "completed",
             "skipped_no_changes": True,
             "finished_at_utc": datetime.now(timezone.utc).isoformat(),
             "reused_from_run": reused_metadata["reused_from_run"],
