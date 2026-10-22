@@ -25,7 +25,7 @@ env:
 
 concurrency:
   group: daily-gpt2-training
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   train:
@@ -118,35 +118,81 @@ jobs:
       - name: Launch, monitor, and download
         if: steps.preflight.outputs.kaggle_ready == 'true'
         env:
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
-          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.shipin }}
+          KAGGLE_USERNAME: \${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
+          KAGGLE_KEY: \${{ secrets.KAGGLE_KEY }}
+          KAGGLE_API_TOKEN: \${{ secrets.KAGGLE_API_TOKEN || secrets.shipin }}
         shell: bash
         run: |
           set +e
           KERNEL_ID="$KAGGLE_USERNAME/$KAGGLE_KERNEL_SLUG"
-          kaggle kernels push -p kaggle > "$RUN_DIR/kaggle_push.log" 2>&1
-          PUSH_CODE=$?
-          cat "$RUN_DIR/kaggle_push.log"
-          if [[ "$PUSH_CODE" -ne 0 ]]; then
-            echo "KAGGLE_PUSH_FAILED" > "$RUN_DIR/status.txt"
+          echo "Target Kaggle kernel: $KERNEL_ID"
+
+          # A previous GitHub run may have successfully submitted the Kaggle kernel
+          # before its status polling failed. Check the canonical ID first so we do
+          # not submit a duplicate while that remote GPU job is still running.
+          EXISTING_STATUS="$(kaggle kernels status "$KERNEL_ID" 2>&1)"
+          STATUS_CODE=$?
+          printf 'Initial status check (exit %s): %s\n' "$STATUS_CODE" "$EXISTING_STATUS" | tee "$RUN_DIR/kaggle_initial_status.log"
+
+          NEED_PUSH="false"
+          FINAL="UNKNOWN"
+          if [[ "$STATUS_CODE" -eq 0 ]]; then
+            if echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.COMPLETE|Status: COMPLETE|^COMPLETE$'; then
+              FINAL="COMPLETE"
+              echo "Existing kernel is complete; reusing its outputs instead of submitting another run."
+            elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(RUNNING|QUEUED|PENDING)|Status: (RUNNING|QUEUED|PENDING)'; then
+              FINAL="RUNNING"
+              echo "Existing kernel is active; monitoring it without duplicate submission."
+            elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
+              NEED_PUSH="true"
+              echo "Existing kernel has a terminal failure; submitting a fresh attempt."
+            else
+              echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
+              echo "Status response was not a recognized Kaggle kernel state; refusing duplicate submission."
+              exit 0
+            fi
+          elif echo "$EXISTING_STATUS" | grep -Eqi '404|Not Found|not found|does not exist|No such kernel'; then
+            NEED_PUSH="true"
+            echo "No existing kernel found at the canonical ID; creating the first run."
+          else
+            echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
+            echo "Could not verify existing kernel state; refusing to submit a potentially duplicate GPU job."
             exit 0
           fi
 
-          FINAL="TIMEOUT"
-          for ATTEMPT in $(seq 1 210); do
-            STATUS="$(kaggle kernels status "$KERNEL_ID" 2>&1)"
-            echo "[$ATTEMPT] $STATUS" >> "$RUN_DIR/kaggle_status.log"
-            echo "Kaggle status $ATTEMPT: $STATUS"
-            if echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.COMPLETE|Status: COMPLETE|^COMPLETE$'; then
-              FINAL="COMPLETE"; break
+          if [[ "$NEED_PUSH" == "true" ]]; then
+            kaggle kernels push -p kaggle > "$RUN_DIR/kaggle_push.log" 2>&1
+            PUSH_CODE=$?
+            cat "$RUN_DIR/kaggle_push.log"
+            if [[ "$PUSH_CODE" -ne 0 ]]; then
+              echo "KAGGLE_PUSH_FAILED" > "$RUN_DIR/status.txt"
+              exit 0
             fi
-            if echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
-              FINAL="KAGGLE_STATUS_FAILED"; break
-            fi
-            sleep 60
-          done
+            FINAL="RUNNING"
+          fi
+
+          if [[ "$FINAL" != "COMPLETE" ]]; then
+            FINAL="TIMEOUT"
+            for ATTEMPT in $(seq 1 210); do
+              STATUS="$(kaggle kernels status "$KERNEL_ID" 2>&1)"
+              STATUS_CODE=$?
+              printf '[%s] (exit %s) %s\n' "$ATTEMPT" "$STATUS_CODE" "$STATUS" >> "$RUN_DIR/kaggle_status.log"
+              echo "Kaggle status $ATTEMPT: $STATUS"
+              if [[ "$STATUS_CODE" -eq 0 ]] && echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.COMPLETE|Status: COMPLETE|^COMPLETE$'; then
+                FINAL="COMPLETE"; break
+              fi
+              if echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
+                FINAL="KAGGLE_STATUS_FAILED"; break
+              fi
+              if [[ "$STATUS_CODE" -ne 0 ]] && echo "$STATUS" | grep -Eqi '403|Permission denied|unauthorized|401'; then
+                FINAL="KAGGLE_STATUS_FAILED"; break
+              fi
+              sleep 60
+            done
+          fi
+
           echo "$FINAL" > "$RUN_DIR/status.txt"
+          echo "Kaggle kernel final status: $FINAL"
 
           if [[ "$FINAL" == "COMPLETE" ]]; then
             kaggle kernels output "$KERNEL_ID" -p "$RUN_DIR/kaggle_output" --force > "$RUN_DIR/kaggle_output_download.log" 2>&1
