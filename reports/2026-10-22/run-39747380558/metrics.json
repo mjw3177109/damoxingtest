@@ -1,0 +1,27 @@
+{
+  "model_name": "uer/gpt2-chinese-cluecorpussmall",
+  "training_method": "LoRA supervised causal language-model fine-tuning",
+  "project_principles": [
+    "保护用户：保护隐私、数据、账户与合法权益。",
+    "维护人类：尊重生命、尊严、自由与安全。"
+  ],
+  "training_data_sha256": "5b6ac09923d6fa5f1fbd140c68ef577d3c3f76fbccac4c5f43bd28156d93dae3",
+  "resolved_model_commit": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "train_examples": 30,
+  "validation_examples": 5,
+  "epochs": 3,
+  "learning_rate": 0.0002,
+  "lora_rank": 8,
+  "max_length": 256,
+  "base_eval_loss": 3.5524075031280518,
+  "final_eval_loss": 3.424954652786255,
+  "base_eval_ppl": 34.89723162959993,
+  "final_eval_ppl": 30.721251696748098,
+  "eval_loss_improvement_pct": 3.588,
+  "train_loss": 3.5501594146092734,
+  "train_runtime_seconds": 60.91,
+  "gpu_name": "Tesla T4",
+  "gpu_memory_gib": 14.56,
+  "seed": 42,
+  "interpretation": "Small seed-corpus metrics only; not evidence of general capability or safety."
+}

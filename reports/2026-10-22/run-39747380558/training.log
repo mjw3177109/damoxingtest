@@ -1,0 +1,19 @@
+2026-10-22 08:21:19,644 | INFO | Starting GPT-2 LoRA training.
+2026-10-22 08:21:19,645 | INFO | Model: uer/gpt2-chinese-cluecorpussmall
+2026-10-22 08:21:19,645 | INFO | CUDA available: True
+2026-10-22 08:21:19,646 | INFO | GPU: Tesla T4; memory GiB: 14.56
+2026-10-22 08:21:19,646 | INFO | Training corpus SHA-256: 5b6ac09923d6fa5f1fbd140c68ef577d3c3f76fbccac4c5f43bd28156d93dae3
+2026-10-22 08:21:19,647 | INFO | Loaded 35 examples: train=30, validation=5
+2026-10-22 08:21:20,900 | INFO | Loading base model weights.
+2026-10-22 08:21:25,499 | INFO | Resolved model commit: c2c0249d8a2731f269414cc3b22dff021f8e07a3
+2026-10-22 08:21:26,035 | INFO | Evaluating the base model before fine-tuning.
+2026-10-22 08:21:28,356 | INFO | Base validation loss: 3.552408; PPL: 34.89723162959993
+2026-10-22 08:21:28,357 | INFO | Beginning LoRA fine-tuning.
+2026-10-22 08:21:33,458 | INFO | Fine-tuning finished; evaluating again.
+2026-10-22 08:21:36,993 | ERROR | Training pipeline failed: cannot access local variable 'loss_change' where it is not associated with a value
+Traceback (most recent call last):
+  File "/kaggle/working/damoxingtest/scripts/train_gpt2_lora.py", line 383, in main
+    return run(args)
+  File "/kaggle/working/damoxingtest/scripts/train_gpt2_lora.py", line 321, in run
+    write_stage(output_dir, "stage4_evaluation", "阶段 4：评估与模型输出", "状态：完成。基线验证 loss：" + str(round(base_loss, 6)) + "；微调后验证 loss：" + str(round(final_loss, 6)) + "；验证 loss 相对改善：" + str(loss_change) + "%；生成样例数：" + str(len(samples)) + "。所有样例都必须人工审核，指标不构成安全认证。")
+UnboundLocalError: cannot access local variable 'loss_change' where it is not associated with a value

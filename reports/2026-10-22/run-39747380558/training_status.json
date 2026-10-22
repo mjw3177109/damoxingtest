@@ -1,0 +1,6 @@
+{
+  "status": "failed",
+  "finished_at_utc": "2026-10-22T08:21:36.995663+00:00",
+  "error_type": "UnboundLocalError",
+  "error": "cannot access local variable 'loss_change' where it is not associated with a value"
+}
