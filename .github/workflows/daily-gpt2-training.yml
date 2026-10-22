@@ -77,10 +77,19 @@ jobs:
           notebook = json.loads(Path("kaggle/gpt2_training.ipynb").read_text(encoding="utf-8"))
           assert notebook.get("nbformat") == 4
           assert any(cell.get("cell_type") == "code" for cell in notebook.get("cells", []))
-          records = [json.loads(line) for line in Path("data/safety_humanity_seed.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
-          assert len(records) >= 8
-          assert all(item.get("instruction") and item.get("response") for item in records)
-          print("Static validation passed; seed records:", len(records))
+          train_path = Path("data/safety_humanity_train_v2.jsonl")
+          eval_path = Path("data/safety_humanity_eval_v1.jsonl")
+          train = [json.loads(line) for line in train_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+          holdout = [json.loads(line) for line in eval_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+          assert len(train) >= 80, len(train)
+          assert len(holdout) >= 20, len(holdout)
+          assert all(item.get("instruction") and item.get("response") for item in train + holdout)
+          norm = lambda s: "".join(s.casefold().split())
+          train_instructions = [norm(item["instruction"]) for item in train]
+          eval_instructions = [norm(item["instruction"]) for item in holdout]
+          assert len(set(train_instructions)) == len(train_instructions), "Duplicate training instructions"
+          assert not set(train_instructions).intersection(eval_instructions), "Train/eval leakage"
+          print("Static validation passed; train records:", len(train), "fixed holdout:", len(holdout))
           PY
           then
             echo "STATIC_VALIDATION_FAILED" > "$RUN_DIR/status.txt"
@@ -206,6 +215,96 @@ jobs:
           fi
           exit 0
 
+      - name: Candidate quality gate and approved-adapter promotion
+        if: steps.preflight.outputs.kaggle_ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, math, re, shutil, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          run_dir = Path(os.environ["RUN_DIR"])
+          statuses = sorted(run_dir.joinpath("kaggle_output").rglob("training_status.json"))
+          reasons = []
+          metrics = {}
+          samples = []
+          status = {}
+          adapter_dir = None
+          if not statuses:
+              reasons.append("training_status.json missing from Kaggle output")
+          else:
+              root = statuses[0].parent
+              status = json.loads(statuses[0].read_text(encoding="utf-8"))
+              metrics_path = root / "metrics.json"
+              samples_path = root / "samples.json"
+              candidate_adapter = root / "adapter"
+              if metrics_path.is_file():
+                  metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+              else:
+                  reasons.append("metrics.json missing")
+              if samples_path.is_file():
+                  samples = json.loads(samples_path.read_text(encoding="utf-8"))
+              else:
+                  reasons.append("samples.json missing")
+              if candidate_adapter.is_dir() and (candidate_adapter / "adapter_config.json").is_file():
+                  adapter_dir = candidate_adapter
+              else:
+                  reasons.append("LoRA adapter files missing")
+          if status.get("status") != "completed":
+              reasons.append("training_status is not completed")
+          improvement = metrics.get("eval_loss_improvement_pct")
+          if not isinstance(improvement, (int, float)) or not math.isfinite(float(improvement)) or improvement <= 0:
+              reasons.append("fixed-holdout validation loss did not improve")
+          outputs = [str(item.get("output", "")).strip() for item in samples if isinstance(item, dict)]
+          if len(outputs) < 10:
+              reasons.append("fewer than 10 fixed holdout generation samples")
+          meaningful = 0
+          for output in outputs:
+              compact = re.sub(r"\s+", "", output)
+              if len(compact) >= 8 and not re.search(r"https?://|www\.|baidu\.com", output, re.I) and not re.search(r"(.)\1{7,}", compact):
+                  meaningful += 1
+          if meaningful < max(8, math.ceil(len(outputs) * 0.8)):
+              reasons.append(f"generation quality heuristic passed only {meaningful}/{len(outputs)} samples")
+          gate = {
+              "checked_at_utc": datetime.now(timezone.utc).isoformat(),
+              "run_id": os.environ.get("GITHUB_RUN_ID"),
+              "candidate_status": status.get("status", "missing"),
+              "promotion_approved": not reasons,
+              "reasons": reasons,
+              "meaningful_generation_samples": meaningful,
+              "generation_sample_count": len(outputs),
+              "eval_loss_improvement_pct": improvement,
+              "training_data_sha256": metrics.get("training_data_sha256"),
+              "eval_data_sha256": metrics.get("eval_data_sha256")
+          }
+          (run_dir / "quality_gate.json").write_text(json.dumps(gate, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          if not reasons and adapter_dir is not None:
+              target = Path("checkpoints/adapter_latest")
+              if target.exists():
+                  shutil.rmtree(target)
+              target.mkdir(parents=True, exist_ok=True)
+              for source in adapter_dir.iterdir():
+                  if source.is_file():
+                      shutil.copy2(source, target / source.name)
+              file_hashes = {item.name: hashlib.sha256(item.read_bytes()).hexdigest() for item in sorted(target.iterdir()) if item.is_file()}
+              version = {
+                  "approved": True,
+                  "promoted_at_utc": datetime.now(timezone.utc).isoformat(),
+                  "source_run_id": os.environ.get("GITHUB_RUN_ID"),
+                  "model_name": metrics.get("model_name"),
+                  "training_data_sha256": metrics.get("training_data_sha256"),
+                  "eval_data_sha256": metrics.get("eval_data_sha256"),
+                  "metrics": metrics,
+                  "adapter_files_sha256": file_hashes,
+                  "note": "Passed preliminary automated gates only; human review remains required."
+              }
+              Path("checkpoints/adapter_version.json").write_text(json.dumps(version, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+              print("PROMOTION_APPROVED: candidate copied to checkpoints/adapter_latest")
+          else:
+              print("PROMOTION_REJECTED; previous approved adapter remains unchanged:", json.dumps(reasons, ensure_ascii=False))
+          PY
+
       - name: Upload model weights and full outputs
         if: always()
         uses: actions/upload-artifact@v4
@@ -216,6 +315,9 @@ jobs:
             ${{ steps.preflight.outputs.run_dir }}/kaggle_push.log
             ${{ steps.preflight.outputs.run_dir }}/kaggle_status.log
             ${{ steps.preflight.outputs.run_dir }}/kaggle_output_download.log
+            ${{ steps.preflight.outputs.run_dir }}/quality_gate.json
+            checkpoints/adapter_latest
+            checkpoints/adapter_version.json
           if-no-files-found: warn
           retention-days: 30
 
@@ -236,6 +338,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$RUN_DIR"
+          if [[ -d checkpoints/adapter_latest && -f checkpoints/adapter_version.json ]]; then
+            git add checkpoints/adapter_latest checkpoints/adapter_version.json
+          fi
           if ! git diff --cached --quiet; then
             git commit -m "Record GPT-2 training run ${{ github.run_id }}"
             PUSH_OK="false"

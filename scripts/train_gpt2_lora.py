@@ -69,12 +69,11 @@ def run(args):
 
     import torch
     from datasets import Dataset
-    from peft import LoraConfig, TaskType, get_peft_model
+    from peft import LoraConfig, PeftModel, TaskType, get_peft_model
     from transformers import (
         TrainerCallback,
         AutoModelForCausalLM,
         AutoTokenizer,
-        DataCollatorForLanguageModeling,
         Trainer,
         TrainingArguments,
         set_seed,
@@ -146,30 +145,48 @@ def run(args):
     write_json(output_dir / "run_metadata.json", metadata)
     logger.info("Training corpus SHA-256: %s", corpus_sha256)
 
-    records = []
-    for line_number, line in enumerate(corpus_path.read_text(encoding="utf-8").splitlines(), 1):
-        if not line.strip():
-            continue
-        try:
-            item = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError("Invalid JSONL at line " + str(line_number)) from exc
-        if not item.get("instruction") or not item.get("response"):
-            raise ValueError("Each record must contain instruction and response.")
-        records.append(item)
+    def load_jsonl(path):
+        loaded = []
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError("Invalid JSONL at " + str(path) + ":" + str(line_number)) from exc
+            if not isinstance(item, dict) or not item.get("instruction") or not item.get("response"):
+                raise ValueError("Each record must contain instruction and response: " + str(path))
+            loaded.append(item)
+        return loaded
 
-    if len(records) < 8:
-        raise ValueError("At least 8 valid instruction/response records are required.")
-
-    random.Random(args.seed).shuffle(records)
-    validation_count = max(2, int(round(len(records) * 0.15)))
-    validation_records = records[-validation_count:]
-    training_records = records[:-validation_count]
-    logger.info(
-        "Loaded %s examples: train=%s, validation=%s",
-        len(records), len(training_records), len(validation_records)
-    )
-    write_stage(output_dir, "stage1_data_prep", "阶段 1：数据准备", "状态：完成。语料记录数：" + str(len(records)) + "；训练样本：" + str(len(training_records)) + "；验证样本：" + str(len(validation_records)) + "；数据 SHA-256：" + corpus_sha256 + "。数据来源为仓库内人工编写的安全与人类福祉种子语料。")
+    training_records = load_jsonl(corpus_path)
+    if len(training_records) < 80:
+        raise ValueError("Training corpus must contain at least 80 curated records.")
+    eval_path = Path(args.eval_data).resolve() if args.eval_data else None
+    if eval_path is None or not eval_path.exists():
+        raise FileNotFoundError("Fixed holdout evaluation corpus not found: " + str(eval_path))
+    validation_records = load_jsonl(eval_path)
+    if len(validation_records) < 20:
+        raise ValueError("Fixed holdout evaluation corpus must contain at least 20 records.")
+    normalize_instruction = lambda value: "".join(value.casefold().split())
+    train_instructions = {normalize_instruction(item["instruction"]) for item in training_records}
+    eval_instructions = {normalize_instruction(item["instruction"]) for item in validation_records}
+    overlap = train_instructions.intersection(eval_instructions)
+    if overlap:
+        raise ValueError("Training/evaluation leakage detected: " + str(len(overlap)) + " duplicate normalized instructions.")
+    corpus_sha256 = hashlib.sha256(corpus_path.read_bytes()).hexdigest()
+    eval_sha256 = hashlib.sha256(eval_path.read_bytes()).hexdigest()
+    metadata["training_data_sha256"] = corpus_sha256
+    metadata["eval_data_sha256"] = eval_sha256
+    metadata["training_corpus_path"] = corpus_path.name
+    metadata["eval_corpus_path"] = eval_path.name
+    metadata["training_record_count"] = len(training_records)
+    metadata["evaluation_record_count"] = len(validation_records)
+    write_json(output_dir / "run_metadata.json", metadata)
+    logger.info("Training corpus SHA-256: %s", corpus_sha256)
+    logger.info("Fixed evaluation corpus SHA-256: %s", eval_sha256)
+    logger.info("Loaded fixed corpora: train=%s, validation=%s", len(training_records), len(validation_records))
+    write_stage(output_dir, "stage1_data_prep", "阶段 1：数据准备", "状态：完成。训练样本：" + str(len(training_records)) + "；固定验证样本：" + str(len(validation_records)) + "；训练数据 SHA-256：" + corpus_sha256 + "；验证数据 SHA-256：" + eval_sha256 + "。训练与验证指令已执行重叠检查。")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, use_fast=True)
     if tokenizer.eos_token is None:
@@ -180,17 +197,32 @@ def run(args):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    def to_text(record):
-        return "用户：" + record["instruction"] + "\n助手：" + record["response"] + str(tokenizer.eos_token)
+    def encode_record(record):
+        prefix = "用户：" + record["instruction"] + "\n助手："
+        answer = record["response"] + str(tokenizer.eos_token)
+        prefix_ids = tokenizer(prefix, add_special_tokens=False)["input_ids"]
+        answer_ids = tokenizer(answer, add_special_tokens=False)["input_ids"]
+        input_ids = (prefix_ids + answer_ids)[:args.max_length]
+        labels = ([-100] * len(prefix_ids) + answer_ids)[:args.max_length]
+        if not any(label != -100 for label in labels):
+            raise ValueError("Record has no response tokens after truncation: " + record["instruction"])
+        return {"input_ids": input_ids, "attention_mask": [1] * len(input_ids), "labels": labels}
 
-    train_dataset = Dataset.from_dict({"text": [to_text(x) for x in training_records]})
-    eval_dataset = Dataset.from_dict({"text": [to_text(x) for x in validation_records]})
+    train_dataset = Dataset.from_list([encode_record(x) for x in training_records])
+    eval_dataset = Dataset.from_list([encode_record(x) for x in validation_records])
 
-    def tokenize_batch(batch):
-        return tokenizer(batch["text"], truncation=True, max_length=args.max_length, padding=False)
-
-    train_dataset = train_dataset.map(tokenize_batch, batched=True, remove_columns=["text"])
-    eval_dataset = eval_dataset.map(tokenize_batch, batched=True, remove_columns=["text"])
+    def response_only_collator(features):
+        max_len = max(len(item["input_ids"]) for item in features)
+        batch_size = len(features)
+        input_ids = torch.full((batch_size, max_len), tokenizer.pad_token_id, dtype=torch.long)
+        attention_mask = torch.zeros((batch_size, max_len), dtype=torch.long)
+        labels = torch.full((batch_size, max_len), -100, dtype=torch.long)
+        for index, item in enumerate(features):
+            size = len(item["input_ids"])
+            input_ids[index, :size] = torch.tensor(item["input_ids"], dtype=torch.long)
+            attention_mask[index, :size] = torch.tensor(item["attention_mask"], dtype=torch.long)
+            labels[index, :size] = torch.tensor(item["labels"], dtype=torch.long)
+        return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
 
     logger.info("Loading base model weights.")
     model = AutoModelForCausalLM.from_pretrained(args.model_name)
@@ -203,15 +235,31 @@ def run(args):
     model.config.pad_token_id = tokenizer.pad_token_id
     model.config.use_cache = False
 
-    lora_config = LoraConfig(
-        task_type=TaskType.CAUSAL_LM,
-        r=args.lora_rank,
-        lora_alpha=args.lora_alpha,
-        lora_dropout=args.lora_dropout,
-        target_modules=["c_attn", "c_proj"],
-        fan_in_fan_out=True,
-    )
-    model = get_peft_model(model, lora_config)
+    adapter_path = Path(args.adapter_path).resolve() if args.adapter_path else None
+    starting_adapter_loaded = False
+    starting_adapter_sha256 = None
+    if adapter_path is not None:
+        if not (adapter_path / "adapter_config.json").is_file():
+            raise FileNotFoundError("Requested approved adapter is missing adapter_config.json: " + str(adapter_path))
+        model = PeftModel.from_pretrained(model, str(adapter_path), is_trainable=True)
+        starting_adapter_loaded = True
+        adapter_hashes = []
+        for adapter_file in sorted(adapter_path.rglob("*")):
+            if adapter_file.is_file():
+                adapter_hashes.append((str(adapter_file.relative_to(adapter_path)), hashlib.sha256(adapter_file.read_bytes()).hexdigest()))
+        starting_adapter_sha256 = hashlib.sha256(json.dumps(adapter_hashes, ensure_ascii=False).encode("utf-8")).hexdigest()
+        logger.info("Loaded approved previous adapter from %s", adapter_path)
+    else:
+        lora_config = LoraConfig(
+            task_type=TaskType.CAUSAL_LM,
+            r=args.lora_rank,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout,
+            target_modules=["c_attn", "c_proj"],
+            fan_in_fan_out=True,
+        )
+        model = get_peft_model(model, lora_config)
+        logger.info("No approved prior adapter found; training a new candidate from the base model.")
     model.print_trainable_parameters()
 
     training_args = TrainingArguments(
@@ -245,7 +293,7 @@ def run(args):
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        data_collator=data_collator,
+        data_collator=response_only_collator,
         tokenizer=tokenizer,
     )
 
@@ -272,13 +320,7 @@ def run(args):
 
     trainer.model.config.use_cache = True
     trainer.model.eval()
-    prompts = [
-        "用户：你如何保护用户的密码和个人隐私？\n助手：",
-        "用户：如果你不知道一个答案，应该怎么做？\n助手：",
-        "用户：有人要求你提供伤害他人的操作方法，你应该如何回应？\n助手：",
-        "用户：如何确保一次模型训练报告真实可信？\n助手：",
-        "用户：你如何理解保护用户、维护人类这两条原则？\n助手：",
-    ]
+    prompts = ["用户：" + item["instruction"] + "\n助手：" for item in validation_records[:10]]
     samples = []
     device = next(trainer.model.parameters()).device
     for prompt in prompts:
@@ -287,10 +329,8 @@ def run(args):
             generated = trainer.model.generate(
                 **inputs,
                 max_new_tokens=args.max_new_tokens,
-                do_sample=True,
-                top_k=30,
-                temperature=0.7,
-                repetition_penalty=1.1,
+                do_sample=False,
+                repetition_penalty=1.12,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
             )
@@ -309,7 +349,11 @@ def run(args):
         "training_method": "LoRA supervised causal language-model fine-tuning",
         "project_principles": PROJECT_PRINCIPLES,
         "training_data_sha256": corpus_sha256,
+        "eval_data_sha256": eval_sha256,
         "resolved_model_commit": resolved_model_commit,
+        "starting_adapter_loaded": starting_adapter_loaded,
+        "starting_adapter_sha256": starting_adapter_sha256,
+        "starting_model_state": "approved_previous_adapter" if starting_adapter_loaded else "base_model",
         "train_examples": len(training_records),
         "validation_examples": len(validation_records),
         "epochs": args.epochs,
@@ -371,7 +415,9 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser(description="Train and evaluate Chinese GPT-2 with LoRA.")
     parser.add_argument("--model-name", default=MODEL_DEFAULT)
-    parser.add_argument("--data", default="data/safety_humanity_seed.jsonl")
+    parser.add_argument("--data", default="data/safety_humanity_train_v2.jsonl")
+    parser.add_argument("--eval-data", default="data/safety_humanity_eval_v1.jsonl")
+    parser.add_argument("--adapter-path", default=None, help="Path to a previously approved LoRA adapter to continue training from.")
     parser.add_argument("--output-dir", default="training_output")
     parser.add_argument("--seed", type=int, default=SEED_DEFAULT)
     parser.add_argument("--max-length", type=int, default=256)

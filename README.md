@@ -36,7 +36,7 @@ GPT-2 微调只是实验原型。小规模种子语料上的 loss 下降不代�
 
 - 小白.md：从零理解项目、配置 GPU、阅读结果和处理失败。
 - TRAINING_METHOD.md：模型、LoRA、损失函数、评估和局限。
-- data/safety_humanity_seed.jsonl：公开种子训练语料。
+- data/safety_humanity_train_v2.jsonl：公开种子训练语料。
 - scripts/train_gpt2_lora.py：训练、评估、生成样例和保存 LoRA Adapter。
 - .github/workflows/daily-gpt2-training.yml：每日调度与报告回写。
 
@@ -50,3 +50,14 @@ GPT-2 微调只是实验原型。小规模种子语料上的 loss 下降不代�
 注意：GitHub Secrets 按仓库隔离。若 shipin 目前只存在于另一个仓库，damoxingtest 不会自动读取它；需要在本仓库的 Actions Secrets 中重新添加同一凭据，或创建新的 Kaggle API Token 并保存为 KAGGLE_API_TOKEN。不要把 token 发到聊天或写入源码。
 
 每次训练还会在输出目录中逐阶段写入 stages/ 下的环境检查、数据准备、基线评估、LoRA 微调和最终评估说明。Kaggle Kernel 的输出通过 Kaggle API 在任务结束后下载，因此 GitHub 会在本次任务结束时统一提交已完成阶段的说明和日志，而不是每个阶段运行时实时推送。
+
+
+## 持续改进 V2
+
+- 训练集：`data/safety_humanity_train_v2.jsonl`，包含原有种子数据和新增原创案例。
+- 固定留出集：`data/safety_humanity_eval_v1.jsonl`，不参与梯度更新；工作流检查训练/评估指令是否重叠。
+- 监督目标：仅对助手回答 token 计算训练 loss。
+- 延续训练：仅当仓库中存在通过初步自动门槛的 `checkpoints/adapter_latest` 时，才从该 Adapter 继续训练；否则从基础模型创建候选。
+- 候选必须有完整指标、至少 10 条固定提示生成样例、验证 loss 改善，并通过初步空回答/重复/网址噪声检查，才会替换已批准 Adapter。
+- 失败或不合格的候选只保留在该次 Artifact，不覆盖已批准版本。自动门槛不是人工安全认证。
+- 新增数据为项目原创合成示例；不使用用户私聊、密码、令牌或未授权私人数据。

@@ -57,6 +57,7 @@ def main():
             stage_files.append(target_stage.name)
 
     training_status = read_json(run_dir / "training_status.json") if (run_dir / "training_status.json").exists() else {}
+    quality_gate = read_json(run_dir / "quality_gate.json") if (run_dir / "quality_gate.json").exists() else {}
     metrics = read_json(run_dir / "metrics.json") if (run_dir / "metrics.json").exists() else {}
     metadata = read_json(run_dir / "run_metadata.json") if (run_dir / "run_metadata.json").exists() else {}
     samples = read_json(run_dir / "samples.json") if (run_dir / "samples.json").exists() else []
@@ -130,6 +131,17 @@ def main():
         report.append("本次运行没有足够的实测指标支持模型质量结论。请先解决凭据、GPU、配额、网络或训练脚本问题，再重新运行。")
 
     report.append("")
+    report.append("## 候选模型晋级门槛")
+    report.append("")
+    if quality_gate:
+        report.append("- 自动晋级： " + ("已通过初步门槛" if quality_gate.get("promotion_approved") else "未通过；保留上一个已批准版本"))
+        report.append("- 有效生成样例： " + str(quality_gate.get("meaningful_generation_samples", 0)) + "/" + str(quality_gate.get("generation_sample_count", 0)))
+        for reason in quality_gate.get("reasons", []):
+            report.append("- 未通过原因： " + str(reason))
+        report.append("- 自动门槛仅为初筛，不等于人工安全认证。")
+    else:
+        report.append("本次未生成 quality_gate.json；没有证据表明候选模型通过晋级检查。")
+    report.append("")
     report.append("## 阶段记录")
     report.append("")
     if stage_files:
@@ -161,6 +173,8 @@ def main():
         report.append("1. 人工复核 samples.json，检查事实性、隐私、伤害风险、偏见和是否遵循指令。")
         report.append("2. 比较验证集指标与上一版本，不因单次 loss 变化就直接宣称模型进步。")
         report.append("3. 逐步扩充有明确许可、经过清洗和审阅的数据，并建立固定测试集。")
+        if quality_gate and not quality_gate.get("promotion_approved"):
+            report.append("4. 候选 Adapter 未通过自动质量门槛；保留上一个已批准版本，不自动晋级。")
     else:
         report.append("1. 根据 status.txt、Kaggle 日志和训练日志定位阻塞原因。")
         report.append("2. 修复凭据、GPU 配额、网络或训练问题后，再进行新的真实运行。")
