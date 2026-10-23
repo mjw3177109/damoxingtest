@@ -1,0 +1,66 @@
+{
+  "source_training_run_id": "39921870784",
+  "source_training_sha": "647b909a994441e3affa3f65fc46f9d0acb2c958",
+  "source_cpu_run_id": "40016790586",
+  "source_cpu_run_url": "https://github.com/mjw3177109/damoxingtest/actions/runs/40016790586",
+  "cpu_conclusion": "success",
+  "artifact_id": 12529420164,
+  "artifact_name": "run12-no-repeat-cpu-40016790586",
+  "artifact_diagnostics_json_sha256": "b7bd05b3fb1007c6633d8bf3bac3ecf973e70c5bed666899a09b67a606b458e6",
+  "experiment_code_merge_sha": "a0edcef7355e39c3a2592f917038ac103db188e3",
+  "experiment_pr": 18,
+  "static_preflight_run_id": "40016721814",
+  "static_preflight_conclusion": "success",
+  "base_model": "uer/gpt2-chinese-cluecorpussmall",
+  "base_model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "adapter_weights_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+  "holdout_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "device": "cpu",
+  "prompt_count": 10,
+  "generation_count": 40,
+  "variable": "no_repeat_ngram_size: 0 vs 2",
+  "controlled": {
+    "do_sample": false,
+    "max_new_tokens": 64,
+    "repetition_penalty": 1.12,
+    "seed": 42
+  },
+  "groups": {
+    "base/control": {
+      "n": 10,
+      "punctuation_only": 7,
+      "eos": 0,
+      "max_token_limit": 10,
+      "mean_longest_character_run": 45.4
+    },
+    "base/no_repeat_bigram": {
+      "n": 10,
+      "punctuation_only": 0,
+      "eos": 0,
+      "max_token_limit": 10,
+      "mean_longest_character_run": 2.2
+    },
+    "candidate/control": {
+      "n": 10,
+      "punctuation_only": 10,
+      "eos": 0,
+      "max_token_limit": 10,
+      "mean_longest_character_run": 64
+    },
+    "candidate/no_repeat_bigram": {
+      "n": 10,
+      "punctuation_only": 8,
+      "eos": 8,
+      "max_token_limit": 2,
+      "mean_longest_character_run": 2.1
+    }
+  },
+  "historical_control_parity": "passed (base 7/10, candidate 10/10 punctuation-only)",
+  "gpu_training_performed": false,
+  "new_train_loss": null,
+  "new_val_loss": null,
+  "new_ppl": null,
+  "human_readability_review": "not performed; raw answers intentionally excluded",
+  "promotion_approved": false,
+  "interpretation": "No-repeat bigram sharply reduces identical-character runs but does not establish meaningful Chinese answers. Candidate remains 8/10 punctuation-only, 8/10 EOS, and unapproved; no model improvement claim."
+}
