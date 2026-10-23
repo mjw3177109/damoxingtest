@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/run12-first-token-probability.yml"
+      - "tools/first_token_probability_probe.py"
+      - "tests/test_first_token_probability_probe.py"
   workflow_dispatch:
 
 permissions:
@@ -65,7 +67,7 @@ jobs:
       - name: Offline unit tests
         run: python -m unittest discover -s tests -v
 
-      - name: Measure 20 first-token distributions without generation or training
+      - name: Measure 20 raw and repetition-penalty-adjusted first-token distributions without generation or training
         shell: bash
         run: |
           set -euo pipefail
@@ -92,7 +94,11 @@ jobs:
           assert not report['model_promotion_approved']
           assert all('output' not in row and 'prompt' not in row for row in report['rows'])
           assert all(0 <= r['top_k'][0]['probability'] <= 1 for r in report['rows'])
-          print('PASS: bounded read-only first-token evidence; no promotion')
+          assert all(r['first_step_repetition_penalty'] == 1.12 for r in report['rows'])
+          assert all(0 <= r['processed_first_step']['top_k'][0]['probability'] <= 1 for r in report['rows'])
+          assert all(set(r['watch_ids_present_in_prompt']) == {'119', '136', '8601'} for r in report['rows'])
+          assert all('base_processed_top1_id' in r and 'candidate_processed_top1_id' in r for r in report['comparisons'])
+          print('PASS: bounded read-only raw and processed first-step evidence; no promotion')
           PY
 
       - name: Upload first-token audit evidence
