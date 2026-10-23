@@ -392,7 +392,6 @@ def run(args):
         dataloader_pin_memory=bool(cuda_available),
         remove_unused_columns=True,
     )
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
     trainer = Trainer(
         model=model,
         args=training_args,
