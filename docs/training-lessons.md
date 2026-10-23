@@ -37,3 +37,13 @@
 - 已合并 CPU-only 离线诊断工具 `tools/analyze_generation_samples.py` 和 4 项单测（PR #2），对应 CI [GPT-2 Static Preflight](https://github.com/mjw3177109/damoxingtest/actions/runs/39935735122) 通过。工具不复制提示词或原始回答到诊断结果，且不修改训练 recipe、数据或 Adapter。
 - **下一步可验证假设**：对相同 10 条提示词、固定 seed 和同一基础模型/Tokenizer，在第 12 次候选 Adapter 与基础模型之间进行 greedy/采样交叉对照；必须记录原始 token IDs、EOS/停止原因、标点占比、回答可读率，并检查是否出现训练前就存在的相同退化。仅改变解码策略不足以证明模型权重质量改善。
 - **晋级结论仍为拒绝**：`promotion_approved=false`，无新训练、无新 Loss/PPL，也无已验证的中文生成质量提升。不得将本次诊断工具改进称为模型进化。
+
+## 2026-10-23：第 12 次基础模型 / Adapter 解码对照已完成（只推理，不训练）
+
+- **证据**：只读 CPU 工作流 [Run 39950178751](https://github.com/mjw3177109/damoxingtest/actions/runs/39950178751) 已 `completed/success`，40/40 次推理及校验通过；对应 Artifact ID `12500012305`（`run12-readonly-decode-probe-39950178751`），永久统计摘要见 [summary.json](../reports/2026-10-23/probe-39950178751/summary.json)。PR #4 合并提交 `00b9e8d377051536fda3eeacf40972b4774a0a97`。
+- **对照配置**：原始训练 Run `39921870784`；基础模型 `uer/gpt2-chinese-cluecorpussmall`，模型 commit `c2c0249d8a2731f269414cc3b22dff021f8e07a3`；固定验证数据 SHA-256 `5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f`；10 条相同提示词，固定 seed 42、`max_new_tokens=64`，base/candidate × greedy/sample 各 10 次。仅使用 GitHub Actions CPU，没有重新分配 Kaggle GPU、没有训练或晋级。
+- **真实对照（纯标点输出数 /10）**：基础模型贪婪解码 **7/10**；基础模型采样 **0/10**；候选 Adapter 贪婪解码 **10/10**；候选 Adapter 采样 **1/10**。
+- **终止情况（根据 Token 推断）**：base/greedy 10/10 达到 64 Token、0 EOS；base/sample 7/10 达上限、3 EOS；candidate/greedy 10/10 达上限、0 EOS；candidate/sample 4/10 达上限、6 EOS。平均最长连续相同字符长度依次为 **45.4、2.3、64.0、2.3**。
+- **可确认的新经验**：基础模型的贪婪解码本身就出现大量标点退化；候选 Adapter 在相同解码下更严重。采样明显改变了重复标点的形式，但 **不证明微调权重变好，也不证明回答可读、正确或安全**。报告默认不包含原始提示词和输出；原始 Token ID 在短期 Artifact 中供复核。停止原因只是基于 EOS/长度推断。
+- **质量与晋级**：第 12 次训练的 Loss/PPL、GPU 和 33 步均未变化，候选 Adapter 仍 **不晋级**。本轮不产生新的 Train/Val Loss、PPL，也不能声称模型进化。
+- **下一步**：在隔离环境对抽样输出做人工可读性/安全审核；再验证 Tokenizer、输入模板、EOS 与 base-vs-candidate 的逐 Token 分布。先完成归因和固定基准，再决定是否只调整一个训练变量。保留可回滚版本，不公开 Token 或隐私。
