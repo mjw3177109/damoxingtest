@@ -1,0 +1,105 @@
+name: GPT-2 Run 12 First-token Probability Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/run12-first-token-probability.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gpt2-run12-first-token-probability
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download and verify exact rejected Run 12 Adapter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run12-artifact"
+          gh run download 39921870784 --repo "$GITHUB_REPOSITORY" \
+            --name gpt2-training-39921870784 --dir "$RUNNER_TEMP/run12-artifact"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'run12-artifact'
+          matches = [
+              p for p in root.rglob('adapter_config.json')
+              if '/run-39921870784/kaggle_output/training_output/adapter/' in '/' + p.as_posix()
+          ]
+          if len(matches) != 1:
+              raise RuntimeError(f'Expected exactly one rejected Run 12 Adapter, got {len(matches)}')
+          config = json.loads(matches[0].read_text(encoding='utf-8'))
+          if config.get('base_model_name_or_path') != 'uer/gpt2-chinese-cluecorpussmall':
+              raise RuntimeError('Unexpected base model')
+          adapter = matches[0].parent
+          if not (adapter / 'adapter_model.safetensors').is_file():
+              raise RuntimeError('Candidate Adapter weights missing')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
+              f.write('RUN12_CANDIDATE_DIR=' + str(adapter) + '\n')
+          print('Verified rejected Run 12 Adapter (read-only)')
+          PY
+
+      - name: Install pinned CPU-only inference dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --no-cache-dir 'torch==2.5.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-cache-dir 'transformers==4.46.3' 'peft==0.13.2' 'accelerate==1.1.1'
+
+      - name: Offline unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Measure 20 first-token distributions without generation or training
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run12-first-token"
+          python tools/first_token_probability_probe.py \
+            --adapter "$RUN12_CANDIDATE_DIR" \
+            --eval-data data/safety_humanity_eval_v1.jsonl \
+            --output "$RUNNER_TEMP/run12-first-token/first_token_probabilities.json"
+
+      - name: Validate bounded non-sensitive evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'run12-first-token' / 'first_token_probabilities.json'
+          report = json.loads(p.read_text(encoding='utf-8'))
+          assert report['source_training_run_id'] == '39921870784'
+          assert report['holdout_sha256'] == '5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f'
+          assert report['device'] == 'cpu'
+          assert report['prompt_count'] == 10 and report['model_forward_passes'] == 20
+          assert len(report['rows']) == 20 and len(report['comparisons']) == 10
+          assert not report['model_promotion_approved']
+          assert all('output' not in row and 'prompt' not in row for row in report['rows'])
+          assert all(0 <= r['top_k'][0]['probability'] <= 1 for r in report['rows'])
+          print('PASS: bounded read-only first-token evidence; no promotion')
+          PY
+
+      - name: Upload first-token audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run12-first-token-probability-${{ github.run_id }}
+          path: ${{ runner.temp }}/run12-first-token/
+          if-no-files-found: warn
+          retention-days: 30
