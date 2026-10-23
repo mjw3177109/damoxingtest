@@ -1,0 +1,55 @@
+{
+  "source_training_run_id": "39921870784",
+  "probe_run_id": "39950178751",
+  "probe_run_url": "https://github.com/mjw3177109/damoxingtest/actions/runs/39950178751",
+  "artifact_id": 12500012305,
+  "artifact_name": "run12-readonly-decode-probe-39950178751",
+  "model": "uer/gpt2-chinese-cluecorpussmall",
+  "model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "training_code_sha": "647b909a994441e3affa3f65fc46f9d0acb2c958",
+  "holdout_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "experiment_type": "read_only_cpu_base_vs_candidate_greedy_vs_sampling",
+  "device": "cpu",
+  "gpu_name": null,
+  "seed": 42,
+  "max_new_tokens": 64,
+  "prompts_per_group": 10,
+  "groups": {
+    "base/greedy": {
+      "n": 10,
+      "punctuation_only_count": 7,
+      "max_token_limit_count": 10,
+      "eos_count": 0,
+      "mean_longest_character_run": 45.4
+    },
+    "base/sample": {
+      "n": 10,
+      "punctuation_only_count": 0,
+      "max_token_limit_count": 7,
+      "eos_count": 3,
+      "mean_longest_character_run": 2.3
+    },
+    "candidate/greedy": {
+      "n": 10,
+      "punctuation_only_count": 10,
+      "max_token_limit_count": 10,
+      "eos_count": 0,
+      "mean_longest_character_run": 64
+    },
+    "candidate/sample": {
+      "n": 10,
+      "punctuation_only_count": 1,
+      "max_token_limit_count": 4,
+      "eos_count": 6,
+      "mean_longest_character_run": 2.3
+    }
+  },
+  "quality_gate": "candidate_not_promoted",
+  "limitations": [
+    "No raw outputs saved in this report; readability, correctness and safety not human-reviewed.",
+    "Stopping reason is inferred from EOS token/length, not instrumented generation events.",
+    "Sampling changes decoding and does not demonstrate weight improvement.",
+    "Small fixed set of 10 prompts; no new GPU training, Loss or PPL."
+  ],
+  "next_step": "Manual review of local-only outputs and targeted tokenizer/input-format diagnostics before any new training."
+}
