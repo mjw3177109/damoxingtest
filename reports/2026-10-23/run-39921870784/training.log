@@ -1,0 +1,31 @@
+2026-10-23 08:04:15,226 | INFO | Starting GPT-2 LoRA training.
+2026-10-23 08:04:15,226 | INFO | Model: uer/gpt2-chinese-cluecorpussmall
+2026-10-23 08:04:15,227 | INFO | CUDA available: True
+2026-10-23 08:04:15,227 | INFO | GPU: Tesla T4; memory GiB: 14.56
+2026-10-23 08:04:15,228 | INFO | Training corpus SHA-256: ad2dfcb5f4549981d555b570e255f54b98c7162c52d46f72af147dc3a035847c
+2026-10-23 08:04:15,229 | INFO | Training corpus SHA-256: ad2dfcb5f4549981d555b570e255f54b98c7162c52d46f72af147dc3a035847c
+2026-10-23 08:04:15,229 | INFO | Fixed evaluation corpus SHA-256: 5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f
+2026-10-23 08:04:15,229 | INFO | Loaded fixed corpora: train=85, validation=24
+2026-10-23 08:04:16,676 | INFO | Loading base model weights.
+2026-10-23 08:04:24,227 | INFO | Resolved model commit: c2c0249d8a2731f269414cc3b22dff021f8e07a3
+2026-10-23 08:04:24,269 | INFO | No approved prior adapter found; training a new candidate from the base model.
+2026-10-23 08:04:24,728 | INFO | Evaluating the base model before fine-tuning.
+2026-10-23 08:04:26,953 | INFO | Base validation loss: 3.389291; PPL: 29.644920921238405
+2026-10-23 08:04:26,954 | INFO | Beginning LoRA fine-tuning.
+2026-10-23 08:04:28,054 | INFO | Trainer metrics at step 1: {'loss': 3.3857, 'grad_norm': 39550.09375, 'learning_rate': 0.0001, 'epoch': 0.09090909090909091}
+2026-10-23 08:04:29,272 | INFO | Trainer metrics at step 5: {'loss': 3.4108, 'grad_norm': 41631.30078125, 'learning_rate': 0.00019541392564000488, 'epoch': 0.45454545454545453}
+2026-10-23 08:04:30,774 | INFO | Trainer metrics at step 10: {'loss': 3.3799, 'grad_norm': 61934.7109375, 'learning_rate': 0.00016889669190756868, 'epoch': 0.9090909090909091}
+2026-10-23 08:04:31,508 | INFO | Trainer metrics at step 11: {'eval_loss': 3.2802810668945312, 'eval_runtime': 0.4783, 'eval_samples_per_second': 50.183, 'eval_steps_per_second': 12.546, 'epoch': 1.0}
+2026-10-23 08:04:32,734 | INFO | Trainer metrics at step 15: {'loss': 3.2198, 'grad_norm': 67372.71875, 'learning_rate': 0.00012506525322587207, 'epoch': 1.3636363636363638}
+2026-10-23 08:04:34,265 | INFO | Trainer metrics at step 20: {'loss': 3.1725, 'grad_norm': 68622.515625, 'learning_rate': 7.493474677412794e-05, 'epoch': 1.8181818181818183}
+2026-10-23 08:04:35,236 | INFO | Trainer metrics at step 22: {'eval_loss': 3.1672985553741455, 'eval_runtime': 0.4577, 'eval_samples_per_second': 52.439, 'eval_steps_per_second': 13.11, 'epoch': 2.0}
+2026-10-23 08:04:36,137 | INFO | Trainer metrics at step 25: {'loss': 3.2464, 'grad_norm': 70956.7890625, 'learning_rate': 3.110330809243134e-05, 'epoch': 2.2727272727272725}
+2026-10-23 08:04:37,680 | INFO | Trainer metrics at step 30: {'loss': 3.1435, 'grad_norm': 72079.8203125, 'learning_rate': 4.586074359995119e-06, 'epoch': 2.7272727272727275}
+2026-10-23 08:04:39,008 | INFO | Trainer metrics at step 33: {'eval_loss': 3.1472766399383545, 'eval_runtime': 0.4697, 'eval_samples_per_second': 51.098, 'eval_steps_per_second': 12.774, 'epoch': 3.0}
+2026-10-23 08:04:39,009 | INFO | Trainer metrics at step 33: {'train_runtime': 11.6575, 'train_samples_per_second': 21.874, 'train_steps_per_second': 2.831, 'total_flos': 10843457504256.0, 'train_loss': 3.2464554598837188, 'epoch': 3.0}
+2026-10-23 08:04:39,010 | INFO | Training completed: global_step=33; train_loss=3.2464554598837188
+2026-10-23 08:04:39,010 | INFO | Fine-tuning finished; evaluating again.
+2026-10-23 08:04:39,470 | INFO | Trainer metrics at step 33: {'eval_loss': 3.1472766399383545, 'eval_runtime': 0.456, 'eval_samples_per_second': 52.631, 'eval_steps_per_second': 13.158, 'epoch': 3.0}
+2026-10-23 08:04:49,018 | INFO | Final validation loss: 3.147277; PPL: 23.272598534340947
+2026-10-23 08:04:49,018 | INFO | Evaluation loss improvement: 7.141%
+2026-10-23 08:04:49,019 | INFO | Saved adapter and report files to /kaggle/working/training_output

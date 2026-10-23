@@ -1,0 +1,14 @@
+{
+  "checked_at_utc": "2026-10-23T08:06:02.051582+00:00",
+  "run_id": "39921870784",
+  "candidate_status": "completed",
+  "promotion_approved": false,
+  "reasons": [
+    "generation quality heuristic passed only 0/10 samples"
+  ],
+  "meaningful_generation_samples": 0,
+  "generation_sample_count": 10,
+  "eval_loss_improvement_pct": 7.141,
+  "training_data_sha256": "ad2dfcb5f4549981d555b570e255f54b98c7162c52d46f72af147dc3a035847c",
+  "eval_data_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f"
+}
