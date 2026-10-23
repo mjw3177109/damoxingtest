@@ -47,3 +47,13 @@
 - **可确认的新经验**：基础模型的贪婪解码本身就出现大量标点退化；候选 Adapter 在相同解码下更严重。采样明显改变了重复标点的形式，但 **不证明微调权重变好，也不证明回答可读、正确或安全**。报告默认不包含原始提示词和输出；原始 Token ID 在短期 Artifact 中供复核。停止原因只是基于 EOS/长度推断。
 - **质量与晋级**：第 12 次训练的 Loss/PPL、GPU 和 33 步均未变化，候选 Adapter 仍 **不晋级**。本轮不产生新的 Train/Val Loss、PPL，也不能声称模型进化。
 - **下一步**：在隔离环境对抽样输出做人工可读性/安全审核；再验证 Tokenizer、输入模板、EOS 与 base-vs-candidate 的逐 Token 分布。先完成归因和固定基准，再决定是否只调整一个训练变量。保留可回滚版本，不公开 Token 或隐私。
+
+## 2026-10-23：第 12 次首 Token 重复惩罚处理后对照（无新训练）
+
+- **真实运行**：只读 CPU [Run 39975111441](https://github.com/mjw3177109/damoxingtest/actions/runs/39975111441) 已 completed/success；Artifact ID 12511430496，原始 JSON SHA-256 75bd467d805da94c653d194fe9660b2194206edd8d9f990170c8f7e1fd338ad9；统计见 [summary.json](../reports/2026-10-23/probe-39975111441/summary.json)。
+- **假设和配置**：此前原始首 Token logits 尚未经过 repetition_penalty=1.12，而生成处理器会将提示词中的 Token 纳入惩罚历史。固定 10 条提示词（验证集 SHA-256 5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f）、相同基础模型和被拒绝的第 12 次 Adapter（权重 SHA-256 979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c），CPU 前向共 20 次。
+- **实际结果**：基础模型 raw top-1 为 ID 4500×3、8601×3、119×3、136×1；处理后为 119×6、8601×3、136×1。3/10 基础模型提示词首位 Token 从 4500 改为 119；候选模型 raw/processed 均为 119×9、136×1，0/10 改变。处理后 base 与 candidate 首位 Token 有 3/10 不同。
+- **经验**：三个此前 raw-vs-greedy 首 Token 差异可以由重复惩罚处理解释，无须假设新的训练效果。ID 119/136/8601 在这 10 条提示词中均未出现；ID 119 的归一化概率仍可因其他已出现 Token 被惩罚而上升。此实验仅解释首步排序，**不能解释后续连续 64 Token 重复的根因**。
+- **测试证据**：PR #9 合并代码 SHA f5cd209d667d215a89ca1bc4b9d6b336c699aa1a；[静态预检 Run 39975017533](https://github.com/mjw3177109/damoxingtest/actions/runs/39975017533) 通过，包含新增 4 项纯 Python 单测；CPU 实验完成并上传 Artifact。
+- **质量结论**：无新增 GPU 训练、Train Loss、Val Loss、PPL 或生成文本；第 12 次候选质量门槛仍为 promotion_approved=false，保留历史已批准版本。
+- **下一步**：在相同提示词、固定 Tokenizer 和 Adapter 下，对前 8 个生成步骤逐步记录处理前/后 logits top-1 与重复 Token 概率，比较 base 与 candidate；先只读 CPU 验证，不直接扩大 GPU 训练。
