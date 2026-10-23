@@ -1,0 +1,51 @@
+{
+  "checked_at_utc": "2026-10-23T23:01:03.872309+00:00",
+  "source_training_run_id": 39921870784,
+  "source_training_sha": "647b909a994441e3affa3f65fc46f9d0acb2c958",
+  "model": "uer/gpt2-chinese-cluecorpussmall",
+  "model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "tokenizer_class": "BertTokenizerFast",
+  "tokenizer_eos_token_id": 102,
+  "tokenizer_sep_token_id": 102,
+  "tokenizer_pad_token_id": 0,
+  "tokenizer_vocab_size": 21128,
+  "max_length": 256,
+  "datasets": {
+    "train": {
+      "sha256": "ad2dfcb5f4549981d555b570e255f54b98c7162c52d46f72af147dc3a035847c",
+      "records": 85,
+      "prefix_tokens": {"min": 14, "median": 25, "max": 36},
+      "answer_tokens": {"min": 40, "median": 50, "max": 73},
+      "full_tokens": {"min": 61, "median": 75, "max": 99},
+      "supervised_tokens": {"min": 40, "median": 50, "max": 73},
+      "truncated_records": 0,
+      "zero_supervision_records": 0,
+      "eos_missing_from_full_answer": 0,
+      "eos_not_at_full_answer_end": 0,
+      "eos_missing_from_supervision": 0,
+      "eos_not_at_supervised_end": 0,
+      "truncated_row_indices": [],
+      "eos_missing_row_indices": []
+    },
+    "eval": {
+      "sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+      "records": 24,
+      "prefix_tokens": {"min": 25, "median": 31, "max": 40},
+      "answer_tokens": {"min": 43, "median": 54, "max": 63},
+      "full_tokens": {"min": 75, "median": 83, "max": 93},
+      "supervised_tokens": {"min": 43, "median": 54, "max": 63},
+      "truncated_records": 0,
+      "zero_supervision_records": 0,
+      "eos_missing_from_full_answer": 0,
+      "eos_not_at_full_answer_end": 0,
+      "eos_missing_from_supervision": 0,
+      "eos_not_at_supervised_end": 0,
+      "truncated_row_indices": [],
+      "eos_missing_row_indices": []
+    }
+  },
+  "scope": "read-only real tokenizer / 109 source rows; aggregate counts only; no model forward or training",
+  "promotion_approved": false,
+  "all_eos_supervised": true,
+  "all_untruncated": true
+}
