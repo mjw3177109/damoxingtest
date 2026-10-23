@@ -1,0 +1,45 @@
+name: GPT-2 Run 12 Real Tokenizer Contract Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/audit_tokenizer_contract.py"
+      - ".github/workflows/run12-tokenizer-contract-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gpt2-run12-tokenizer-contract-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile and run offline contract tests
+        run: |
+          python -m py_compile tools/audit_tokenizer_contract.py tests/test_tokenizer_contract_audit.py
+          python -m unittest discover -s tests -p 'test_tokenizer_contract_audit.py' -v
+      - name: Install pinned tokenizer library (CPU only)
+        run: python -m pip install "transformers==4.46.3"
+      - name: Audit Run 12 real tokenizer and dataset lengths
+        env:
+          HF_HUB_DISABLE_TELEMETRY: "1"
+          TOKENIZERS_PARALLELISM: "false"
+        run: python tools/audit_tokenizer_contract.py --max-length 256 --output tokenizer_contract_audit.json
+      - name: Upload aggregate-only audit (no raw prompts)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run12-real-tokenizer-contract-${{ github.run_id }}
+          path: tokenizer_contract_audit.json
+          if-no-files-found: warn
+          retention-days: 30
