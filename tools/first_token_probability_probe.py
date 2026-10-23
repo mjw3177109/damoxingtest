@@ -51,6 +51,25 @@ def summarize_logits(logits, watch_ids=WATCH_IDS, top_k=5):
     }
 
 
+def apply_repetition_penalty(logits, prompt_token_ids, penalty=1.12):
+    """Match HF repetition-penalty processing for one next-token score row.
+
+    Prompt tokens are included in the penalty history, even at generation step 1.
+    Each distinct seen token is modified once, regardless of its frequency.
+    """
+    if not math.isfinite(penalty) or penalty <= 0:
+        raise ValueError("repetition penalty must be finite and positive")
+    values = [float(x) for x in logits]
+    if not values or not all(math.isfinite(x) for x in values):
+        raise ValueError("Non-finite or empty model logits")
+    for token_id in set(int(x) for x in prompt_token_ids):
+        if token_id < 0 or token_id >= len(values):
+            raise ValueError("Prompt token ID is outside model vocabulary")
+        score = values[token_id]
+        values[token_id] = score * penalty if score < 0 else score / penalty
+    return values
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--adapter", type=Path, required=True)
@@ -94,11 +113,18 @@ def main():
                 raise ValueError("Prompt exceeds model context window")
             with torch.inference_mode():
                 last_logits = model(**inputs, use_cache=False).logits[0, -1].float().cpu().tolist()
+            prompt_ids = inputs["input_ids"][0].tolist()
+            adjusted = apply_repetition_penalty(last_logits, prompt_ids, penalty=1.12)
             rows.append({
                 "phase": phase,
                 "prompt_index": index,
                 "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
                 **summarize_logits(last_logits),
+                "first_step_repetition_penalty": 1.12,
+                "processed_first_step": summarize_logits(adjusted),
+                "watch_ids_present_in_prompt": {
+                    str(i): i in prompt_ids for i in WATCH_IDS
+                },
             })
 
     measure(base, "base")
@@ -115,6 +141,10 @@ def main():
             "base_top1_id": before["top_k"][0]["token_id"],
             "candidate_top1_id": after["top_k"][0]["token_id"],
             "top1_changed": before["top_k"][0]["token_id"] != after["top_k"][0]["token_id"],
+            "base_raw_to_processed_top1_changed": before["top_k"][0]["token_id"] != before["processed_first_step"]["top_k"][0]["token_id"],
+            "candidate_raw_to_processed_top1_changed": after["top_k"][0]["token_id"] != after["processed_first_step"]["top_k"][0]["token_id"],
+            "base_processed_top1_id": before["processed_first_step"]["top_k"][0]["token_id"],
+            "candidate_processed_top1_id": after["processed_first_step"]["top_k"][0]["token_id"],
             "entropy_delta_nats": round(after["entropy_nats"] - before["entropy_nats"], 7),
             "watch_probability_delta": {
                 str(i): round(after["watch"][str(i)]["probability"] - before["watch"][str(i)]["probability"], 9)
@@ -134,6 +164,7 @@ def main():
         "prompt_count": len(prompts),
         "model_forward_passes": len(rows),
         "watch_token_ids": list(WATCH_IDS),
+        "first_step_processor": "repetition_penalty=1.12; prompt token IDs included; before any subsequent decoding step",
         "rows": rows,
         "comparisons": comparisons,
         "model_promotion_approved": False,
@@ -142,6 +173,7 @@ def main():
             "Probabilities depend on the pinned model, tokenizer, prompt, and candidate Adapter.",
             "No raw prompt/output text is included; token IDs are not decoded here.",
             "This audit alone does not establish model quality, safety, or a causal root cause.",
+            "Processor-adjusted first-step logits do not explain later-step repeated-token dynamics.",
         ],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
