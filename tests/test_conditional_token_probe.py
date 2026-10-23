@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from conditional_token_probe import adjust_repetition, trace_greedy, token_probability
+from conditional_token_probe import adjust_repetition, trace_greedy, token_probability, extend_token_types
 
 
 class ConditionalTokenProbeTests(unittest.TestCase):
@@ -31,6 +31,12 @@ class ConditionalTokenProbeTests(unittest.TestCase):
         trace = trace_greedy([0], forward, steps=2)
         self.assertEqual(seen, [(0,), (0, 1)])
         self.assertEqual(trace["selected_token_ids"], [1, 2])
+
+    def test_token_type_history_is_preserved(self):
+        self.assertEqual(extend_token_types([0, 0, 1], 5), [0, 0, 1, 1, 1])
+        self.assertIsNone(extend_token_types(None, 4))
+        with self.assertRaises(ValueError):
+            extend_token_types([0, 1], 1)
 
     def test_probability_and_invalid_inputs(self):
         self.assertAlmostEqual(token_probability([1000, 999], 0), 1/(1+math.exp(-1)))
