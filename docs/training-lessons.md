@@ -57,3 +57,14 @@
 - **测试证据**：PR #9 合并代码 SHA f5cd209d667d215a89ca1bc4b9d6b336c699aa1a；[静态预检 Run 39975017533](https://github.com/mjw3177109/damoxingtest/actions/runs/39975017533) 通过，包含新增 4 项纯 Python 单测；CPU 实验完成并上传 Artifact。
 - **质量结论**：无新增 GPU 训练、Train Loss、Val Loss、PPL 或生成文本；第 12 次候选质量门槛仍为 promotion_approved=false，保留历史已批准版本。
 - **下一步**：在相同提示词、固定 Tokenizer 和 Adapter 下，对前 8 个生成步骤逐步记录处理前/后 logits top-1 与重复 Token 概率，比较 base 与 candidate；先只读 CPU 验证，不直接扩大 GPU 训练。
+
+## 2026-10-24：八步条件 Token 审计纠错与有效复测（无新 GPU 训练）
+
+- **原始错误实验隔离**：CPU Run [39983543880](https://github.com/mjw3177109/damoxingtest/actions/runs/39983543880) 虽显示 success，但新探针前向计算遗漏 `token_type_ids` 和 `attention_mask`，与历史首 Token 审计 Run `39975111441` 的输入条件不一致。该次 Token 结果不可用于同口径比较。详见 [事故记录](run12-eight-token-parity-incident.md)。
+- **修复**：PR #12 保留 Tokenizer 全部必要输入，生成时延伸最后一个 token_type_id，并加入固定四条提示词的首步 Token ID 一致性门槛；离线 6 项单测通过，GitHub 静态 CI [39984032358](https://github.com/mjw3177109/damoxingtest/actions/runs/39984032358) success。
+- **真实复测**：CPU-only [Run 39984106556](https://github.com/mjw3177109/damoxingtest/actions/runs/39984106556) completed/success；Artifact ID `12514931481`，原始 JSON SHA-256 `f2b8dc5e1c9a094a1cd9c53d6ffce3796069ee9137d50bfe1ef2fab5eb4d7143`；[汇总报告](../reports/2026-10-24/probe-39984106556/summary.json)。
+- **锁定条件**：原始训练 Run `39921870784`，基础模型 commit `c2c0249d8a2731f269414cc3b22dff021f8e07a3`，候选 Adapter SHA-256 `979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c`，固定验证集 SHA-256 `5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f`。四条提示词 × 两模型 × 八步，共 64 次 CPU 前向计算，无 GPU 训练。
+- **一致性验证**：基础模型首 Token ID `[119, 8601, 119, 8601]`，候选模型 `[119, 119, 119, 119]`，均与 Run `39975111441` 的历史第一步结果一致。
+- **真实观察**：候选模型在四条提示词上均连续八步重复 Token ID `119`（4/4）；基础模型有 2/4 条连续八步重复同一 Token。相邻重复次数：候选 28/28，基础 15/28；前八步均无 EOS。证据支持候选在此固定小样本上更易重复，**不等于根因已确定，也不证明模型回答能力或安全性**。
+- **训练指标与晋级**：本轮没有新 Train Loss、Val Loss、PPL，也没有新的 Kaggle Kernel。第 12 次历史指标保持不变，`promotion_approved=false`，历史最佳不覆盖。
+- **可复用教训**：同一个 Tokenizer 的输入张量必须完整传递，先验证与历史基线的首步一致性，再分析后续条件概率；Actions success、Artifact 存在不足以保证实验设计有效。下一轮应只读分析后续概率轨迹和可读回答，明确假设后才考虑单变量 GPU 实验。

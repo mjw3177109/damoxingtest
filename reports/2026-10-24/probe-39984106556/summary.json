@@ -1,0 +1,61 @@
+{
+  "audit_type": "run12_eight_step_conditional_token_parity_corrected",
+  "date": "2026-10-24",
+  "source_training_run_id": "39921870784",
+  "source_prior_first_token_run_id": "39975111441",
+  "invalid_initial_probe_run_id": "39983543880",
+  "verified_corrected_probe_run_id": "39984106556",
+  "artifact_id": 12514931481,
+  "artifact_name": "run12-eight-token-audit-39984106556",
+  "artifact_json_sha256": "f2b8dc5e1c9a094a1cd9c53d6ffce3796069ee9137d50bfe1ef2fab5eb4d7143",
+  "code_sha": "9e77eaaba480ecce295557ab1220fafbf6ee966b",
+  "model": "uer/gpt2-chinese-cluecorpussmall",
+  "model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "adapter_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+  "holdout_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "device": "cpu",
+  "prompt_count": 4,
+  "max_generated_steps": 8,
+  "total_model_forward_passes": 64,
+  "decoding": "greedy; repetition_penalty=1.12; attention_mask and token_type_ids preserved; use_cache=False",
+  "first_token_parity": "PASS: matches Run 39975111441 for base and candidate on first four prompts",
+  "results": {
+    "base": {
+      "prompts_all_eight_same_token": 2,
+      "adjacent_repeated_transitions": 15,
+      "total_adjacent_transitions": 28,
+      "first_token_ids": [
+        119,
+        8601,
+        119,
+        8601
+      ],
+      "eos_within_8_steps": 0
+    },
+    "candidate": {
+      "prompts_all_eight_same_token": 4,
+      "adjacent_repeated_transitions": 28,
+      "total_adjacent_transitions": 28,
+      "first_token_ids": [
+        119,
+        119,
+        119,
+        119
+      ],
+      "eos_within_8_steps": 0
+    }
+  },
+  "evidence_interpretation": "On four fixed prompts, the rejected LoRA candidate repeated Token 119 for all eight greedy steps, whereas the base model did so for two of four prompts. This is a controlled, limited observation; it does not establish a unique causal mechanism or answer quality.",
+  "quarantined_evidence": "Run 39983543880 omitted tokenizer token_type_ids and attention_mask, causing first-step disagreement with the earlier audited run; its conclusions must not be used.",
+  "training_this_run": false,
+  "new_training_metrics": false,
+  "model_promotion_approved": false,
+  "limitations": [
+    "Only four prompts and eight greedy steps; no full-answer or safety assessment.",
+    "No new Train Loss, Val Loss, PPL or Kaggle GPU allocation.",
+    "First-step parity verified; later-step tracing uses full-context model calls with preserved tokenizer fields.",
+    "Do not generalize results to all prompts or claim causal attribution.",
+    "No secrets or raw prompt/output text stored."
+  ],
+  "next_experiment": "Inspect whether token_type_ids, prompt template, and repetition-penalty processor interact with the candidate's later-step logits; compare selected-token probability trajectories and run human-readable safety review before any single-variable retraining."
+}
