@@ -1,0 +1,58 @@
+{
+  "audit_type": "run12_first_token_raw_logit_comparison",
+  "source_training_run_id": "39921870784",
+  "source_decode_probe_run_id": "39950178751",
+  "source_probability_run_id": "39965989251",
+  "source_probability_artifact_id": 12505958682,
+  "source_probability_json_sha256": "02066abe99e1f29617ce4697672f19f5cbbe5b14a1acfd52d624125e4034eed4",
+  "candidate_adapter_weights_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+  "model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "holdout_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "device": "cpu",
+  "prompt_count": 10,
+  "forward_passes": 20,
+  "raw_first_token_top1_frequency": {
+    "base": {
+      "119": 3,
+      "136": 1,
+      "4500": 3,
+      "8601": 3
+    },
+    "candidate": {
+      "119": 9,
+      "136": 1
+    }
+  },
+  "top1_changed_prompts": 6,
+  "mean_raw_first_token_entropy_nats": {
+    "base": 6.56755103,
+    "candidate": 6.67388241,
+    "candidate_minus_base": 0.10633138
+  },
+  "mean_raw_first_token_probability": {
+    "119": {
+      "base": 0.0292856022,
+      "candidate": 0.0454403403,
+      "delta": 0.0161547381
+    },
+    "136": {
+      "base": 0.0131478902,
+      "candidate": 0.0129682149,
+      "delta": -0.0001796753
+    },
+    "8601": {
+      "base": 0.0243377135,
+      "candidate": 0.0117710314,
+      "delta": -0.0125666821
+    }
+  },
+  "important_comparison_caveat": "This audit measures raw logits before generation processors. Prior greedy generation used repetition_penalty=1.12, so raw top-1 IDs need not match the first emitted token IDs. Do not interpret the 3 base/raw ID 4500 results as a contradiction or a proven root cause until processor-adjusted logits are audited.",
+  "interpretation": "LoRA candidate shifts first-token raw top-1 toward ID 119 on this fixed 10-prompt holdout, but its mean raw first-token entropy rises rather than collapses. This does not establish why full greedy sequences repeat one token.",
+  "next_controlled_experiment": "Compare raw versus repetition-penalty-adjusted first-step logits for the same prompts, then inspect conditional logits at later generation steps and manually review safe redacted samples.",
+  "new_gpu_training": false,
+  "new_train_loss": null,
+  "new_val_loss": null,
+  "new_ppl": null,
+  "model_promotion_approved": false,
+  "data_handling": "No raw prompts, generated text, credentials or secrets included."
+}
