@@ -1,0 +1,47 @@
+name: GPT-2 Static Preflight
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - ".github/workflows/gpt2-static-preflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile Python files
+        run: python -m py_compile scripts/train_gpt2_lora.py scripts/prepare_kaggle_kernel.py scripts/finalize_report.py
+      - name: Catch undefined names before Kaggle GPU allocation
+        run: |
+          python -m pip install "ruff==0.14.2"
+          ruff check --select F821 scripts/train_gpt2_lora.py
+      - name: Verify response-only label masking and Trainer wiring
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          tree = ast.parse(Path("scripts/train_gpt2_lora.py").read_text(encoding="utf-8"))
+          defs = {node.name: node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+          assert "response_only_collator" in defs
+          assert "encode_record" in defs
+          trainer_calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Trainer"]
+          assert len(trainer_calls) == 1
+          collators = [kw.value for kw in trainer_calls[0].keywords if kw.arg == "data_collator"]
+          assert len(collators) == 1 and isinstance(collators[0], ast.Name) and collators[0].id == "response_only_collator"
+          encode = defs["encode_record"]
+          collator = defs["response_only_collator"]
+          assert any(isinstance(n, ast.UnaryOp) and isinstance(n.op, ast.USub) and isinstance(n.operand, ast.Constant) and n.operand.value == 100 for n in ast.walk(encode)), "response label masking missing"
+          assert any(isinstance(n, ast.UnaryOp) and isinstance(n.op, ast.USub) and isinstance(n.operand, ast.Constant) and n.operand.value == 100 for n in ast.walk(collator)), "padding label masking missing"
+          print("PASS: response-only collator and -100 masking retained")
+          PY
