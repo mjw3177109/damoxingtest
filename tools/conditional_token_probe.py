@@ -28,6 +28,15 @@ def adjust_repetition(logits, seen_ids, penalty=1.12):
     return result
 
 
+def extend_token_types(prompt_token_types, history_length):
+    """Match generate() by repeating the last prompt token type for new tokens."""
+    if prompt_token_types is None:
+        return None
+    if not prompt_token_types or history_length < len(prompt_token_types):
+        raise ValueError("Invalid token-type history")
+    return list(prompt_token_types) + [prompt_token_types[-1]] * (history_length - len(prompt_token_types))
+
+
 def token_probability(logits, token_id):
     if token_id < 0 or token_id >= len(logits):
         return None
@@ -108,12 +117,22 @@ def main():
     def measure(model, phase):
         model.eval()
         for index, prompt in enumerate(prompts):
-            prompt_ids = tokenizer(prompt, return_tensors="pt")["input_ids"][0].tolist()
+            inputs = tokenizer(prompt, return_tensors="pt")
+            prompt_ids = inputs["input_ids"][0].tolist()
+            token_types = inputs["token_type_ids"][0].tolist() if "token_type_ids" in inputs else None
             if len(prompt_ids) + 8 > model.config.n_positions:
                 raise ValueError("Prompt plus probe exceeds context window")
             def forward(history):
                 with torch.inference_mode():
-                    return model(input_ids=torch.tensor([history]), use_cache=False).logits[0, -1].float().tolist()
+                    kwargs = {
+                        "input_ids": torch.tensor([history]),
+                        "attention_mask": torch.ones((1, len(history)), dtype=torch.long),
+                        "use_cache": False,
+                    }
+                    extended_types = extend_token_types(token_types, len(history))
+                    if extended_types is not None:
+                        kwargs["token_type_ids"] = torch.tensor([extended_types])
+                    return model(**kwargs).logits[0, -1].float().tolist()
             trace = trace_greedy(prompt_ids, forward, eos_ids=eos_ids)
             results.append({
                 "phase": phase,
@@ -125,6 +144,13 @@ def main():
     measure(base, "base")
     candidate = PeftModel.from_pretrained(base, str(args.adapter), is_trainable=False)
     measure(candidate, "candidate")
+    # Prevent a silent mismatch with the previously audited first-token evidence.
+    # This detects accidentally dropped tokenizer attention masks/token types.
+    expected = {"base": [119, 8601, 119, 8601], "candidate": [119, 119, 119, 119]}
+    for phase, ids in expected.items():
+        observed = [r["selected_token_ids"][0] for r in results if r["phase"] == phase]
+        if observed != ids:
+            raise RuntimeError(f"First-step parity mismatch for {phase}: {observed} != {ids}")
     report = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_training_run_id": "39921870784",
@@ -133,7 +159,8 @@ def main():
         "holdout_sha256": holdout_hash,
         "adapter_weights_sha256": hashlib.sha256((args.adapter / "adapter_model.safetensors").read_bytes()).hexdigest(),
         "device": "cpu",
-        "decode_mode": "greedy; repetition_penalty=1.12; use_cache=False",
+        "decode_mode": "greedy; repetition_penalty=1.12; use_cache=False; tokenizer attention_mask/token_type_ids preserved",
+        "first_step_parity": "matched audited Run 39975111441 on all 4 prompts and both models",
         "prompt_count": 4,
         "max_steps": 8,
         "model_forward_passes": sum(row["steps_executed"] for row in results),
