@@ -28,3 +28,12 @@
 - **未确认根因**：重复标点可能与极小语料、目标模型能力、tokenizer/终止符、贪婪解码、训练超参数等因素有关；仅凭现有日志无法确定哪一个是主因，不应擅自声称已修复。
 - **下一次受控实验（先推理、后决定是否重训）**：保留第 12 次 Artifact 内的候选 Adapter 与固定 10 条提示词，锁定模型权重、tokenizer、输入、随机种子，比较原有 greedy 解码与一组受控采样参数（例如 `do_sample=True, top_p=0.9, temperature=0.8, repetition_penalty=1.12, no_repeat_ngram_size=3`）；分别记录原始 token IDs、终止符、重复率、可读回答比例、人工安全审核。若采样仍无法产生有意义的中文回答，先诊断数据与 tokenizer/训练目标，再决定是否设计仅改变一个变量的 GPU 训练实验。**当前未执行该实验，不得报告其结果。**
 - 防止浪费 GPU：本次已有完整训练证据，若训练数据与 recipe hash 未变化，使用仓库的重复训练保护；文档更新不应触发 GPU 工作流。
+
+## 2026-10-23：第 12 次生成退化的离线定量复核（无新 GPU 训练）
+
+- 证据来源：[第 12 次 samples.json](../reports/2026-10-23/run-39921870784/samples.json)；运行 ID `39921870784`，训练代码 SHA `647b909a994441e3affa3f65fc46f9d0acb2c958`。
+- 直接统计保存的 10 条输出：**10/10 仅包含标点；10/10 各恰好 64 个相同字符；9 条是连续句点，1 条是连续问号；不同输出仅 2 种；最长相同字符连续长度为 64**。该复核没有产生新的模型回答。
+- 当前 `scripts/train_gpt2_lora.py` 的默认 `--max-new-tokens=64`，与上述可见输出长度一致，但没有保存原始生成 token IDs、EOS 位置或停止原因，**不能仅凭字符长度断言模型一定因 token 上限停止**。
+- 已合并 CPU-only 离线诊断工具 `tools/analyze_generation_samples.py` 和 4 项单测（PR #2），对应 CI [GPT-2 Static Preflight](https://github.com/mjw3177109/damoxingtest/actions/runs/39935735122) 通过。工具不复制提示词或原始回答到诊断结果，且不修改训练 recipe、数据或 Adapter。
+- **下一步可验证假设**：对相同 10 条提示词、固定 seed 和同一基础模型/Tokenizer，在第 12 次候选 Adapter 与基础模型之间进行 greedy/采样交叉对照；必须记录原始 token IDs、EOS/停止原因、标点占比、回答可读率，并检查是否出现训练前就存在的相同退化。仅改变解码策略不足以证明模型权重质量改善。
+- **晋级结论仍为拒绝**：`promotion_approved=false`，无新训练、无新 Loss/PPL，也无已验证的中文生成质量提升。不得将本次诊断工具改进称为模型进化。
