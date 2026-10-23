@@ -1,0 +1,102 @@
+name: GPT-2 Run 12 Eight-token Conditional Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/run12-conditional-token-probe.yml"
+      - "tools/conditional_token_probe.py"
+      - "tests/test_conditional_token_probe.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gpt2-run12-eight-token-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download exact rejected Run 12 Adapter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run12-artifact"
+          gh run download 39921870784 --repo "$GITHUB_REPOSITORY" \
+            --name gpt2-training-39921870784 --dir "$RUNNER_TEMP/run12-artifact"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'run12-artifact'
+          matches = [p for p in root.rglob('adapter_config.json')
+                     if '/run-39921870784/kaggle_output/training_output/adapter/' in '/' + p.as_posix()]
+          if len(matches) != 1:
+              raise RuntimeError(f'Expected one rejected Run 12 Adapter, got {len(matches)}')
+          config = json.loads(matches[0].read_text(encoding='utf-8'))
+          if config.get('base_model_name_or_path') != 'uer/gpt2-chinese-cluecorpussmall':
+              raise RuntimeError('Unexpected base model')
+          if not (matches[0].parent / 'adapter_model.safetensors').is_file():
+              raise RuntimeError('Missing candidate weights')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
+              f.write('RUN12_CANDIDATE_DIR=' + str(matches[0].parent) + '\n')
+          print('Verified exact rejected candidate (read-only)')
+          PY
+      - name: Install pinned CPU inference dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --no-cache-dir 'torch==2.5.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-cache-dir 'transformers==4.46.3' 'peft==0.13.2' 'accelerate==1.1.1'
+      - name: Offline tests
+        run: python -m unittest discover -s tests -v
+      - name: Measure eight conditional token steps without training
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run12-eight-token"
+          python tools/conditional_token_probe.py \
+            --adapter "$RUN12_CANDIDATE_DIR" \
+            --eval-data data/safety_humanity_eval_v1.jsonl \
+            --output "$RUNNER_TEMP/run12-eight-token/conditional_tokens.json"
+      - name: Validate bounded evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'run12-eight-token' / 'conditional_tokens.json'
+          d = json.loads(p.read_text(encoding='utf-8'))
+          assert d['source_training_run_id'] == '39921870784'
+          assert d['holdout_sha256'] == '5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f'
+          assert d['device'] == 'cpu' and d['prompt_count'] == 4 and d['max_steps'] == 8
+          assert len(d['results']) == 8 and d['model_forward_passes'] <= 64
+          assert {r['phase'] for r in d['results']} == {'base', 'candidate'}
+          assert all(1 <= r['steps_executed'] <= 8 for r in d['results'])
+          assert all(len(r['rows']) == r['steps_executed'] for r in d['results'])
+          assert all('prompt' not in r and 'output' not in r for r in d['results'])
+          assert d['model_promotion_approved'] is False
+          print('PASS: bounded, read-only, token-only audit; no model promotion')
+          PY
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run12-eight-token-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/run12-eight-token/
+          if-no-files-found: warn
+          retention-days: 30
