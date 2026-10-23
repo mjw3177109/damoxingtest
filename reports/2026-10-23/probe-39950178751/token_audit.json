@@ -1,0 +1,103 @@
+{
+  "audit_type": "read_only_token_sequence_evidence",
+  "source_training_run_id": "39921870784",
+  "source_probe_run_id": "39950178751",
+  "source_probe_artifact_id": 12500012305,
+  "source_probe_json_sha256": "cf1a26c8f61737e21b12fafbe388741ce5f78bb6bbdddbd64d8d3b18cfdea31d",
+  "holdout_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "device": "cpu",
+  "prompt_count": 10,
+  "comparisons": 40,
+  "group_token_diagnostics": {
+    "base/greedy": {
+      "n": 10,
+      "single_unique_token_in_entire_continuation_count": 7,
+      "mean_unique_token_ids_per_continuation": 2.9,
+      "unique_token_ids_across_all_continuations": 14,
+      "first_generated_token_id_frequencies": {
+        "119": 6,
+        "136": 1,
+        "8601": 3
+      },
+      "punctuation_only_count": 7
+    },
+    "base/sample": {
+      "n": 10,
+      "single_unique_token_in_entire_continuation_count": 0,
+      "mean_unique_token_ids_per_continuation": 36.8,
+      "unique_token_ids_across_all_continuations": 234,
+      "first_generated_token_id_frequencies": {
+        "119": 3,
+        "136": 1,
+        "2644": 1,
+        "8038": 1,
+        "8148": 1,
+        "10075": 1,
+        "10538": 1,
+        "10958": 1
+      },
+      "punctuation_only_count": 0
+    },
+    "candidate/greedy": {
+      "n": 10,
+      "single_unique_token_in_entire_continuation_count": 10,
+      "mean_unique_token_ids_per_continuation": 1,
+      "unique_token_ids_across_all_continuations": 2,
+      "first_generated_token_id_frequencies": {
+        "119": 9,
+        "136": 1
+      },
+      "punctuation_only_count": 10
+    },
+    "candidate/sample": {
+      "n": 10,
+      "single_unique_token_in_entire_continuation_count": 0,
+      "mean_unique_token_ids_per_continuation": 29.4,
+      "unique_token_ids_across_all_continuations": 208,
+      "first_generated_token_id_frequencies": {
+        "119": 4,
+        "136": 1,
+        "8038": 1,
+        "8148": 1,
+        "10075": 1,
+        "10538": 1,
+        "10958": 1
+      },
+      "punctuation_only_count": 1
+    }
+  },
+  "base_candidate_comparison": {
+    "greedy": {
+      "exact_token_sequence_match_count": 7,
+      "exact_match_prompt_indices": [
+        0,
+        2,
+        4,
+        5,
+        6,
+        8,
+        9
+      ],
+      "same_first_generated_token_id_count": 7,
+      "mean_common_prefix_tokens": 44.8
+    },
+    "sample": {
+      "exact_token_sequence_match_count": 1,
+      "exact_match_prompt_indices": [
+        3
+      ],
+      "same_first_generated_token_id_count": 9,
+      "mean_common_prefix_tokens": 6
+    }
+  },
+  "limitations": [
+    "No raw prompt or generated text is included in this audit.",
+    "Token IDs are identifiers; verify the pinned tokenizer before interpreting characters.",
+    "Identical sequences do not prove equal probabilities or equal model weights.",
+    "Sampling differences do not establish quality, correctness, or safety.",
+    "No new training, Loss, PPL, or promotion approval."
+  ],
+  "next_experiment": "Read-only first-token logit/top-k probability comparison using pinned tokenizer and same prompts, then manual review before any promotion.",
+  "model_promotion_approved": false
+}
