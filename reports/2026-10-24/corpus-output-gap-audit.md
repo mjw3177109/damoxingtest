@@ -6,7 +6,7 @@
 - 训练来源：[Actions Run 39921870784](https://github.com/mjw3177109/damoxingtest/actions/runs/39921870784)，训练代码 SHA `647b909a994441e3affa3f65fc46f9d0acb2c958`。
 - 训练数据 `data/safety_humanity_train_v2.jsonl`，SHA-256（源运行元数据）`ad2dfcb5f4549981d555b570e255f54b98c7162c52d46f72af147dc3a035847c`。
 - 固定验证 `data/safety_humanity_eval_v1.jsonl`，SHA-256（源运行元数据）`5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f`。
-- 生成证据：[第 12 次 samples.json](../run-39921870784/samples.json) 的相对路径应以本仓库 `reports/2026-10-23/run-39921870784/samples.json` 为准；[第 12 次质量门槛](https://github.com/mjw3177109/damoxingtest/blob/main/reports/2026-10-23/run-39921870784/quality_gate.json) 为 `promotion_approved=false`。
+- 生成证据：[第 12 次 samples.json](https://github.com/mjw3177109/damoxingtest/blob/main/reports/2026-10-23/run-39921870784/samples.json)；[第 12 次质量门槛](https://github.com/mjw3177109/damoxingtest/blob/main/reports/2026-10-23/run-39921870784/quality_gate.json) 为 `promotion_approved=false`。
 - 最近一次 CPU 对照：[Run 40016790586](https://github.com/mjw3177109/damoxingtest/actions/runs/40016790586)，其统计见 `reports/2026-10-24/no-repeat-40016790586/summary.json`。
 
 ## 静态检查方法与结果
