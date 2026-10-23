@@ -1,0 +1,58 @@
+{
+  "audit_type": "run12_first_step_repetition_penalty_comparison",
+  "source_training_run_id": "39921870784",
+  "source_probability_run_id": "39965989251",
+  "source_processed_probability_run_id": "39975111441",
+  "source_processed_artifact_id": 12511430496,
+  "source_processed_json_sha256": "75bd467d805da94c653d194fe9660b2194206edd8d9f990170c8f7e1fd338ad9",
+  "code_sha": "f5cd209d667d215a89ca1bc4b9d6b336c699aa1a",
+  "candidate_adapter_weights_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+  "holdout_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "repetition_penalty": 1.12,
+  "device": "cpu",
+  "prompts": 10,
+  "forward_passes": 20,
+  "raw_top1_counts": {
+    "base": {
+      "119": 3,
+      "136": 1,
+      "4500": 3,
+      "8601": 3
+    },
+    "candidate": {
+      "119": 9,
+      "136": 1
+    }
+  },
+  "processed_top1_counts": {
+    "base": {
+      "119": 6,
+      "136": 1,
+      "8601": 3
+    },
+    "candidate": {
+      "119": 9,
+      "136": 1
+    }
+  },
+  "raw_to_processed_top1_changes": {
+    "base": 3,
+    "candidate": 0
+  },
+  "base_vs_candidate_processed_top1_changes": 3,
+  "watched_token_ids_present_in_prompt": {
+    "119": 0,
+    "136": 0,
+    "8601": 0
+  },
+  "observation": "Three base-model prompts shift from raw top-1 token 4500 to processed top-1 token 119. This reconciles three first-step raw-vs-greedy differences without invoking a new training effect. Candidate first-step top-1 unchanged by penalty on all ten prompts.",
+  "interpretation": "Prompt tokens are included in the first-step repetition penalty. Watched token 119 is not present in any of the ten prompts, but its normalized probability can increase when other logits are penalized. This audit does not establish why later generated tokens repeat.",
+  "limitations": [
+    "First-step only; no conditional logits after generation step one.",
+    "No new training, Train Loss, Val Loss, PPL, or generated answers.",
+    "No model promotion; rejected candidate and historical best remain unchanged.",
+    "Token IDs and aggregate counts only; no raw prompt text or credentials."
+  ],
+  "next_experiment": "Use a bounded read-only CPU probe on selected prompts to measure conditional token probabilities and processor effects over the first 8 generation steps; compare base and rejected candidate with identical input and tokenizer; do not retrain until diagnosis is supported.",
+  "model_promotion_approved": false
+}
