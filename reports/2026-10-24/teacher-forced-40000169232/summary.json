@@ -1,0 +1,59 @@
+{
+  "audit_type": "controlled_teacher_forced_same_prefix",
+  "source_training_run_id": "39921870784",
+  "source_training_sha": "647b909a994441e3affa3f65fc46f9d0acb2c958",
+  "source_cpu_run_id": "40000169232",
+  "source_cpu_run_url": "https://github.com/mjw3177109/damoxingtest/actions/runs/40000169232",
+  "cpu_workflow_conclusion": "success",
+  "source_artifact_id": 12520284753,
+  "source_artifact_name": "run12-teacher-forced-cpu-40000169232",
+  "source_artifact_json_sha256": "3cd7352f059d74de3ff97ba51c46da7981c731cf48bf014025784926e859f5f0",
+  "code_pr": 15,
+  "code_merge_sha": "1c20ff673dc3a8e243499f1c062779824ae02761",
+  "static_preflight_run_id": "40000108444",
+  "static_preflight_conclusion": "success",
+  "base_model": "uer/gpt2-chinese-cluecorpussmall",
+  "base_model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "adapter_weights_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+  "holdout_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "training_data_sha256": "ad2dfcb5f4549981d555b570e255f54b98c7162c52d46f72af147dc3a035847c",
+  "device": "cpu",
+  "prompt_count": 4,
+  "forced_token_ids": [
+    119,
+    8601
+  ],
+  "steps_per_trace": 8,
+  "new_model_forward_passes": 128,
+  "matched_history_pairs": 64,
+  "results": [
+    {
+      "forced_token_id": 119,
+      "matched_history_pairs": 32,
+      "candidate_higher_token119_probability": 25,
+      "candidate_lower_token119_probability": 7,
+      "candidate_equal_token119_probability": 0,
+      "mean_candidate_minus_base_token119_probability": 0.012719537,
+      "base_token119_top1_steps": 30,
+      "candidate_token119_top1_steps": 32
+    },
+    {
+      "forced_token_id": 8601,
+      "matched_history_pairs": 32,
+      "candidate_higher_token119_probability": 32,
+      "candidate_lower_token119_probability": 0,
+      "candidate_equal_token119_probability": 0,
+      "mean_candidate_minus_base_token119_probability": 0.002685634,
+      "base_token119_top1_steps": 2,
+      "candidate_token119_top1_steps": 4
+    }
+  ],
+  "first_step_parity": "matched audited Run 39975111441 for both models on all four prompts",
+  "gpu_training_performed": false,
+  "new_train_loss": null,
+  "new_val_loss": null,
+  "new_ppl": null,
+  "new_model_answers": false,
+  "promotion_approved": false,
+  "interpretation": "Fixed token histories remove generated-history divergence as a confound for these probability comparisons. Observed probability shifts do not establish a unique root cause, answer quality, safety, or model improvement. Retain the previous approved model."
+}

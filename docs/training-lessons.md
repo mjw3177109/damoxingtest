@@ -68,3 +68,12 @@
 - **真实观察**：候选模型在四条提示词上均连续八步重复 Token ID `119`（4/4）；基础模型有 2/4 条连续八步重复同一 Token。相邻重复次数：候选 28/28，基础 15/28；前八步均无 EOS。证据支持候选在此固定小样本上更易重复，**不等于根因已确定，也不证明模型回答能力或安全性**。
 - **训练指标与晋级**：本轮没有新 Train Loss、Val Loss、PPL，也没有新的 Kaggle Kernel。第 12 次历史指标保持不变，`promotion_approved=false`，历史最佳不覆盖。
 - **可复用教训**：同一个 Tokenizer 的输入张量必须完整传递，先验证与历史基线的首步一致性，再分析后续条件概率；Actions success、Artifact 存在不足以保证实验设计有效。下一轮应只读分析后续概率轨迹和可读回答，明确假设后才考虑单变量 GPU 实验。
+
+
+## 2026-10-24：第 12 次固定前缀 Teacher Forcing 对照（CPU，不重训）
+
+- **证据**：PR #15 合并 SHA `1c20ff673dc3a8e243499f1c062779824ae02761`；静态预检 [Run 40000108444](https://github.com/mjw3177109/damoxingtest/actions/runs/40000108444) success；CPU [Run 40000169232](https://github.com/mjw3177109/damoxingtest/actions/runs/40000169232) completed/success，Artifact ID `12520284753`，原始 `teacher_forced.json` SHA-256 `3cd7352f059d74de3ff97ba51c46da7981c731cf48bf014025784926e859f5f0`。完整[审计报告](../reports/2026-10-24/teacher-forced-40000169232/report.md)与[摘要](../reports/2026-10-24/teacher-forced-40000169232/summary.json)。
+- **受控条件**：第 12 次训练 Run `39921870784`，基础模型固定 commit `c2c0249d8a2731f269414cc3b22dff021f8e07a3`，候选 Adapter SHA-256 `979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c`，固定验证集 SHA-256 `5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f`。完整 Tokenizer 输入与历史首步一致性验证通过。
+- **真实结果**：4 条提示词 × 固定重复 Token 119 或 8601 × 8 步 × 两模型，**128 次 CPU 前向、64 组同前缀配对**。强制 119 前缀下候选 Token 119 概率较高 25/32、较低 7/32，平均概率差 +0.012719537；基础/候选 top-1 为 30/32、32/32。强制 8601 前缀下较高 32/32、较低 0/32，平均概率差 +0.002685634；基础/候选 top-1 为 2/32、4/32。
+- **经验与边界**：固定输入历史可消除自由生成后的前缀分歧，但 teacher forcing **不是**真实回答；模型概率变化不证明唯一根因、能力提升或安全。基础模型也有明显的重复偏好，不能把退化全部归咎于 LoRA。
+- **晋级和资源**：无新 Kaggle GPU、无新训练指标或文本回答；第 12 次生成质量仍为 0/10，`promotion_approved=false`，保留历史已批准版本。下一步检查固定前缀的 raw/processed logits margin，并独立审核实际中文回答，再决定单变量训练实验。
