@@ -1,0 +1,25 @@
+Downloading run_metadata.json to reports/2026-10-23/run-39906737838/kaggle_output/training_output
+  0%|          | 0.00/1.25k [00:00<?, ?B/s]100%|██████████| 1.25k/1.25k [00:00<00:00, 6.51MB/s]
+
+Output file downloaded to reports/2026-10-23/run-39906737838/kaggle_output/training_output/run_metadata.json
+Downloading stage0_environment.md to reports/2026-10-23/run-39906737838/kaggle_output/training_output/stages
+  0%|          | 0.00/99.0 [00:00<?, ?B/s]100%|██████████| 99.0/99.0 [00:00<00:00, 854kB/s]
+
+Output file downloaded to reports/2026-10-23/run-39906737838/kaggle_output/training_output/stages/stage0_environment.md
+Downloading stage1_data_prep.md to reports/2026-10-23/run-39906737838/kaggle_output/training_output/stages
+  0%|          | 0.00/317 [00:00<?, ?B/s]100%|██████████| 317/317 [00:00<00:00, 2.55MB/s]
+
+Output file downloaded to reports/2026-10-23/run-39906737838/kaggle_output/training_output/stages/stage1_data_prep.md
+Downloading training.log to reports/2026-10-23/run-39906737838/kaggle_output/training_output
+  0%|          | 0.00/1.48k [00:00<?, ?B/s]100%|██████████| 1.48k/1.48k [00:00<00:00, 9.83MB/s]
+
+Output file downloaded to reports/2026-10-23/run-39906737838/kaggle_output/training_output/training.log
+Downloading training_status.json to reports/2026-10-23/run-39906737838/kaggle_output/training_output
+  0%|          | 0.00/179 [00:00<?, ?B/s]100%|██████████| 179/179 [00:00<00:00, 1.51MB/s]
+
+Output file downloaded to reports/2026-10-23/run-39906737838/kaggle_output/training_output/training_status.json
+Downloading training_status.json to reports/2026-10-23/run-39906737838/kaggle_output
+  0%|          | 0.00/73.0 [00:00<?, ?B/s]100%|██████████| 73.0/73.0 [00:00<00:00, 634kB/s]
+
+Output file downloaded to reports/2026-10-23/run-39906737838/kaggle_output/training_status.json
+Kernel log downloaded to reports/2026-10-23/run-39906737838/kaggle_output/damoxingtest-gpt-2-daily-training.log 
