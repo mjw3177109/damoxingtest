@@ -1,0 +1,61 @@
+{
+  "created_at_local": "2026-10-25 03:06 Asia/Shanghai",
+  "repository": "mjw3177109/damoxingtest",
+  "experiment_run_id": 40123632273,
+  "experiment_code_sha": "67480a7d7040977ef1fd8068abe39c39cdbb6fb7",
+  "source_training_run_id": 39921870784,
+  "previous_control_run_id": 40119328101,
+  "artifact_id": 12571643988,
+  "artifact_sha256": "4f861f0d63691c34c2367f1b61c62550f292c2512cca1cc7fcfe9a2e81e755ee",
+  "ci_run_id": 40123585891,
+  "ci_tests_passed": 134,
+  "train_sha256": "ad2dfcb5f4549981d555b570e255f54b98c7162c52d46f72af147dc3a035847c",
+  "eval_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "gpu_training_performed": false,
+  "device": "cpu",
+  "generations": 8,
+  "config": {
+    "max_new_tokens": 64,
+    "do_sample": false,
+    "repetition_penalty": 1.12,
+    "no_repeat_ngram_size": 2,
+    "seed_per_prompt": "42+index",
+    "input_mode": "train_parity"
+  },
+  "results": {
+    "base": {
+      "count": 4,
+      "punctuation_only": 0,
+      "contains_chinese": 4,
+      "eos": 0,
+      "manual_direct_answer": 0
+    },
+    "candidate": {
+      "count": 4,
+      "punctuation_only": 1,
+      "contains_chinese": 3,
+      "eos": 4,
+      "special_tokens_only_blank": 0,
+      "manual_direct_answer": 0,
+      "unk_tokens_in_sample_4": 2
+    }
+  },
+  "historical_control": {
+    "base": {
+      "punctuation_only": 0,
+      "contains_chinese": 4,
+      "eos": 1,
+      "manual_direct_answer": 0
+    },
+    "candidate": {
+      "punctuation_only": 2,
+      "contains_chinese": 1,
+      "eos": 1,
+      "special_tokens_only_blank": 1,
+      "manual_direct_answer": 0
+    }
+  },
+  "promotion_approved": false,
+  "quality_certified": false,
+  "next_experiment": "Diagnose response-label alignment, tokenization, and candidate data quality with offline static checks; do not repeat GPU training without a tested root-cause fix."
+}
