@@ -1,0 +1,40 @@
+{
+  "source_training_run_id": 39921870784,
+  "cpu_run_id": 40052724586,
+  "ci_run_id": 40052587955,
+  "code_sha": "40dfa067ecb73fcd00dda26fda55580fd07b47f5",
+  "holdout_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "artifact_id": 12543813789,
+  "artifact_zip_sha256": "75996fa81f5f8af85c166d0d88874a8d45ecf7546badbe94d493b0d41eace595",
+  "review_json_sha256": "c15eb874ec394d1e2a01bf7e1a190fc334ac04abec80ef2176a30db1dc95369d",
+  "device": "cpu",
+  "new_gpu_training": false,
+  "generations": 8,
+  "base": {
+    "count": 4,
+    "punctuation_only": 0,
+    "contains_chinese": 4,
+    "eos": 1
+  },
+  "candidate": {
+    "count": 4,
+    "punctuation_only": 2,
+    "contains_chinese": 1,
+    "eos": 1
+  },
+  "blank_candidate_prompt_index": 3,
+  "blank_output": {
+    "generated_token_count": 64,
+    "special_token_count": 64,
+    "eos_token_count": 0,
+    "pad_token_count": 0,
+    "unfiltered_decode_length": 383,
+    "filtered_decode_length": 0,
+    "stripped_decode_length": 0,
+    "category": "special_tokens_only"
+  },
+  "root_cause_scope": "immediate decoding mechanism confirmed; why model generated special tokens unknown",
+  "promotion_approved": false,
+  "quality_certified": false,
+  "requires_manual_review": true
+}
