@@ -1,0 +1,64 @@
+{
+  "audit_date": "2026-10-24",
+  "training_run_id": 39921870784,
+  "static_preflight_run_id": 40064496811,
+  "cpu_run_id": 40064518326,
+  "code_sha": "c7f227edae8364823c4a33fdc915548e29170237",
+  "model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "holdout_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "adapter_weights_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+  "artifact_id": 12548288212,
+  "artifact_zip_sha256": "cf94008a0c77fb71550397a7ae0ed1656bbf2ddddd088e2d2427c4e93e3d8f72",
+  "experiment_json_sha256": "1ad142b68e42f5a76629ac807c1a208218d5105788b9831f7e1aa2e3249f27d5",
+  "device": "cpu",
+  "seed": 42,
+  "unit_tests_passed": 78,
+  "generated_answers": 16,
+  "first_step_forward_passes": 16,
+  "variable": "append newline after the already-matching assistant suffix",
+  "production_templates_already_match": true,
+  "settings": [
+    "train_parity",
+    "assistant_newline"
+  ],
+  "summary": {
+    "base/train_parity": {
+      "punctuation_only": 0,
+      "contains_chinese": 4,
+      "eos": 1,
+      "blank": 0,
+      "unk_first_top1": 0,
+      "mean_first_step_unk_probability": 0.02435688
+    },
+    "base/assistant_newline": {
+      "punctuation_only": 0,
+      "contains_chinese": 4,
+      "eos": 1,
+      "blank": 0,
+      "unk_first_top1": 0,
+      "mean_first_step_unk_probability": 0.02435688
+    },
+    "candidate/train_parity": {
+      "punctuation_only": 2,
+      "contains_chinese": 1,
+      "eos": 1,
+      "blank": 1,
+      "unk_first_top1": 1,
+      "mean_first_step_unk_probability": 0.03612401
+    },
+    "candidate/assistant_newline": {
+      "punctuation_only": 2,
+      "contains_chinese": 1,
+      "eos": 1,
+      "blank": 1,
+      "unk_first_top1": 1,
+      "mean_first_step_unk_probability": 0.03612401
+    }
+  },
+  "new_gpu_training": false,
+  "observed_quality_improvement": false,
+  "quality_certified": false,
+  "promotion_approved": false,
+  "root_cause_confirmed": false,
+  "next_experiment": "compare privacy-safe hashes and lengths of tokenized original and newline-suffixed inputs before further prompt variants"
+}
