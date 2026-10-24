@@ -1,0 +1,99 @@
+{
+  "experiment": "Run 12 bounded greedy free-period trajectory, four pinned prompts, base vs rejected LoRA",
+  "checked_at": "2026-10-25 Asia/Shanghai (UTC 2026-10-24 16:03)",
+  "source_actions_run_id": 40109722670,
+  "static_preflight_run_id": 40109665550,
+  "source_gpu_run_id": 39921870784,
+  "code_sha": "ed004c3d9f4a1c56beaea6a924586a01ce5c766a",
+  "adapter_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+  "eval_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "artifact": {
+    "id": 12566201779,
+    "name": "run12-free-period-40109722670",
+    "zip_sha256": "0acc8efa19c93fafd9832baeb66ad598ff2b337693bd1528bf273fd542a46707",
+    "contains": [
+      "review.json"
+    ]
+  },
+  "configuration": {
+    "device": "cpu",
+    "model_phases": [
+      "base",
+      "candidate"
+    ],
+    "prompts": 4,
+    "generations": 8,
+    "max_new_tokens": 32,
+    "do_sample": false,
+    "repetition_penalty": 1.12,
+    "seed_per_prompt": "42 + index",
+    "input_mode": "train_parity_without_token_type_ids"
+  },
+  "summary": {
+    "base": {
+      "generations": 4,
+      "period_seen": 0,
+      "first_period_followed_by_period": 0,
+      "max_token_limit": 4,
+      "total_period_tokens": 0,
+      "total_unk_tokens": 1,
+      "max_period_streak": 0
+    },
+    "candidate": {
+      "generations": 4,
+      "period_seen": 2,
+      "first_period_followed_by_period": 2,
+      "max_token_limit": 3,
+      "total_period_tokens": 64,
+      "total_unk_tokens": 32,
+      "max_period_streak": 32
+    }
+  },
+  "candidate_per_prompt": [
+    {
+      "prompt_index": 0,
+      "period_count": 32,
+      "first_period_position": 0,
+      "period_followed_by_period": true,
+      "next_period_probability": 0.369264305,
+      "next_period_rank": 1,
+      "unk_count": 0,
+      "stop_reason": "max_new_tokens"
+    },
+    {
+      "prompt_index": 1,
+      "period_count": 32,
+      "first_period_position": 0,
+      "period_followed_by_period": true,
+      "next_period_probability": 0.210927278,
+      "next_period_rank": 1,
+      "unk_count": 0,
+      "stop_reason": "max_new_tokens"
+    },
+    {
+      "prompt_index": 2,
+      "period_count": 0,
+      "unk_count": 0,
+      "stop_reason": "eos",
+      "generated_token_count": 27
+    },
+    {
+      "prompt_index": 3,
+      "period_count": 0,
+      "unk_count": 32,
+      "stop_reason": "max_new_tokens",
+      "generated_token_count": 32
+    }
+  ],
+  "new_gpu_training": false,
+  "new_model_answers": false,
+  "promotion_approved": false,
+  "limitations": [
+    "Four fixed prompts, greedy decoding and 32-token cap; not a broad model evaluation.",
+    "Earlier forced-period results are not equivalent to free-generation paths.",
+    "No raw prompt, decoded text or token IDs stored in this summary.",
+    "No new Train Loss, Val Loss, PPL or model weights."
+  ],
+  "next_test": "Pre-register a single CPU decoding control (e.g. no_repeat_ngram_size=2) and compare repeated punctuation, UNK, EOS and readable responses on the same fixed holdout; no GPU or promotion."
+}
