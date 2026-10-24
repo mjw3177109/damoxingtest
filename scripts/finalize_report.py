@@ -61,6 +61,12 @@ def main():
     metrics = read_json(run_dir / "metrics.json") if (run_dir / "metrics.json").exists() else {}
     metadata = read_json(run_dir / "run_metadata.json") if (run_dir / "run_metadata.json").exists() else {}
     samples = read_json(run_dir / "samples.json") if (run_dir / "samples.json").exists() else []
+    skipped = bool(training_status.get("skipped_no_changes"))
+    if skipped:
+        # Reused historical stage files must not masquerade as stages executed now.
+        for stage_file in (run_dir / "stages").glob("*.md"):
+            stage_file.unlink()
+        stage_files.clear()
 
     if status == "BLOCKED_MISSING_KAGGLE_SECRETS":
         final_status = "BLOCKED_MISSING_KAGGLE_SECRETS"
@@ -93,13 +99,15 @@ def main():
         report.append("- 本次训练动作：跳过重复训练；复用已有指标与样例，未进行新的 GPU 参数更新。")
         report.append("- 复用来源： " + str(training_status.get("reused_from_run", "历史成功运行")))
     report.append("")
-    report.append("## 本次结果")
+    report.append("## 历史复用指标（本轮未训练或重新评估）" if skipped else "## 本次结果")
     report.append("")
     if metrics:
+        if skipped:
+            report.append("- 指标来源： " + str(training_status.get("reused_from_run", "历史运行")) + "；以下指标不是本次新测量。")
         report.extend([
             "- 基础模型： " + str(metrics.get("model_name", metadata.get("model_name", "未知"))),
-            "- GPU： " + str(metrics.get("gpu_name", metadata.get("gpu_name", "未知"))),
-            "- 显存（GiB）： " + fmt(metrics.get("gpu_memory_gib", metadata.get("gpu_memory_gib"))),
+            "- GPU： " + ("本轮未使用；历史来源：" + str(metadata.get("source_run_gpu_name", "未知")) if skipped else str(metrics.get("gpu_name", metadata.get("gpu_name", "未知")))),
+            "- 显存（GiB）： " + (("本轮未使用；历史来源：" + fmt(metadata.get("source_run_gpu_memory_gib"))) if skipped else fmt(metrics.get("gpu_memory_gib", metadata.get("gpu_memory_gib")))),
             "- 训练样本： " + fmt(metrics.get("train_examples")),
             "- 验证样本： " + fmt(metrics.get("validation_examples")),
             "- 基线验证 loss： " + fmt(metrics.get("base_eval_loss")),
@@ -107,11 +115,15 @@ def main():
             "- 基线 PPL： " + fmt(metrics.get("base_eval_ppl")),
             "- 微调后 PPL： " + fmt(metrics.get("final_eval_ppl")),
             "- 验证 loss 相对改善（%）： " + fmt(metrics.get("eval_loss_improvement_pct")),
-            "- 训练耗时（秒）： " + fmt(metrics.get("train_runtime_seconds")),
+            ("- 历史训练耗时（秒）： " if skipped else "- 训练耗时（秒）： ") + fmt(metrics.get("train_runtime_seconds")),
             "",
         ])
         change = metrics.get("eval_loss_improvement_pct")
-        if isinstance(change, (int, float)) and change > 0:
+        if skipped:
+            report.append("## 整体评价")
+            report.append("")
+            report.append("本次未进行新的训练或评估；以上 Loss、PPL 和生成样例均为历史证据，不得视为本轮改进。")
+        elif isinstance(change, (int, float)) and change > 0:
             report.append("## 整体评价")
             report.append("")
             report.append("本次验证集 loss 在当前小规模保留集上下降，说明该指标有改善迹象。由于语料和验证集规模很小，这不是通用能力提升或安全性的证明；仍需审查生成样例、过拟合和数据质量。")
@@ -147,9 +159,11 @@ def main():
     else:
         report.append("本次未生成 quality_gate.json；没有证据表明候选模型通过晋级检查。")
     report.append("")
-    report.append("## 阶段记录")
+    report.append("## 阶段记录" if not skipped else "## 本轮阶段记录（未执行训练）")
     report.append("")
-    if stage_files:
+    if skipped:
+        report.append("本次未执行训练阶段；历史阶段说明仅保留在来源归档中，不属于本轮成果。")
+    elif stage_files:
         for stage_name in sorted(set(stage_files)):
             report.append("- stages/" + stage_name)
     else:
@@ -158,7 +172,7 @@ def main():
     report.append("## 模型输出与日志")
     report.append("")
     if "samples.json" in copied and isinstance(samples, list):
-        report.append("- 已保存生成样例： samples.json（" + str(len(samples)) + " 条）")
+        report.append(("- 已保存历史复用生成样例： " if skipped else "- 已保存生成样例： ") + "samples.json（" + str(len(samples)) + " 条）")
     else:
         report.append("- 没有找到 samples.json。")
     for name in ["training.log", "metrics.json", "run_metadata.json", "training_status.json", "summary.md"]:
