@@ -15,7 +15,7 @@ from run12_token_type_parity import make_inputs
 
 SENSITIVE = re.compile(
     r"(?i)(?:https?://\S+|www\.\S+|[\w.+-]+@[\w.-]+\.[a-z]{2,}"
-    r"|\b(?:\+?\d[\d\s().-]{9,}\d)\b|\b(?:sk|ghp|gho|github_pat)-[\w-]{8,}\b)"
+    r"|\b(?:\+?\d[\d\s().-]{9,}\d)\b|\b(?:sk-[\w-]{8,}|(?:gh[pousr]|github_pat)[_-][A-Za-z0-9_-]{8,})\b)"
 )
 
 

@@ -24,6 +24,22 @@ class ReadabilityReviewTests(unittest.TestCase):
     def test_safe_excerpt_redacts_url(self):
         self.assertIn("REDACTED", module.safe_excerpt("https://example.com"))
 
+    def test_safe_excerpt_redacts_github_classic_token(self):
+        self.assertIn("REDACTED", module.safe_excerpt("token=ghp_abcdefghijklmnop"))
+
+    def test_safe_excerpt_redacts_github_fine_grained_token(self):
+        self.assertIn("REDACTED", module.safe_excerpt("token=github_pat_abcdefghijklmnop"))
+
+    def test_safe_excerpt_redacts_github_actions_token(self):
+        self.assertIn("REDACTED", module.safe_excerpt("token=ghs_abcdefghijklmnop"))
+
+    def test_safe_excerpt_redacts_openai_project_key(self):
+        self.assertIn("REDACTED", module.safe_excerpt("key=sk-proj-abcdefgh12345678"))
+
+    def test_safe_excerpt_checks_entire_text_before_truncating(self):
+        output = "正常回答" * 60 + " ghp_abcdefghijklmnop"
+        self.assertIn("REDACTED", module.safe_excerpt(output))
+
     def test_safe_excerpt_bounded(self):
         self.assertLessEqual(len(module.safe_excerpt("好" * 200)), 161)
 
