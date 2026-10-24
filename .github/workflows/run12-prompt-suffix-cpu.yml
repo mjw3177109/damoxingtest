@@ -1,0 +1,98 @@
+name: GPT-2 Run 12 Prompt Suffix CPU Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/run12-prompt-suffix-cpu.yml"
+      - "tools/run12_prompt_suffix_probe.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gpt2-run12-prompt-suffix-cpu
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify exact rejected Run 12 Adapter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run12-source"
+          gh run download 39921870784 --repo "$GITHUB_REPOSITORY" \
+            --name gpt2-training-39921870784 --dir "$RUNNER_TEMP/run12-source"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'run12-source'
+          matches = [p for p in root.rglob('adapter_config.json')
+                     if '/run-39921870784/kaggle_output/training_output/adapter/' in '/' + p.as_posix()]
+          if len(matches) != 1:
+              raise RuntimeError('Expected exactly one rejected Run 12 Adapter')
+          adapter = matches[0].parent
+          cfg = json.loads(matches[0].read_text(encoding='utf-8'))
+          weights = adapter / 'adapter_model.safetensors'
+          if cfg.get('base_model_name_or_path') != 'uer/gpt2-chinese-cluecorpussmall':
+              raise RuntimeError('Unexpected base model')
+          if not weights.is_file() or hashlib.sha256(weights.read_bytes()).hexdigest() != '979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c':
+              raise RuntimeError('Adapter hash mismatch')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
+              f.write('CANDIDATE_ADAPTER_DIR=' + str(adapter) + '\n')
+          print('Verified pinned rejected adapter; no promotion')
+          PY
+      - name: Install pinned CPU inference dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --no-cache-dir 'torch==2.5.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-cache-dir 'transformers==4.46.3' 'peft==0.13.2' 'accelerate==1.1.1'
+      - name: Run offline unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Execute 16 bounded CPU generations
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/prompt-suffix"
+          python tools/run12_prompt_suffix_probe.py \
+            --adapter "$CANDIDATE_ADAPTER_DIR" \
+            --eval-data data/safety_humanity_eval_v1.jsonl \
+            --output "$RUNNER_TEMP/prompt-suffix/prompt_suffix.json"
+      - name: Check output contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'prompt-suffix/prompt_suffix.json'
+          data = json.loads(p.read_text(encoding='utf-8'))
+          assert data['device'] == 'cpu'
+          assert data['generations'] == 16
+          assert data['first_token_forward_passes'] == 16
+          assert data['production_training_and_generation_templates_already_match']
+          assert data['hypothetical_variant_only']
+          assert data['holdout_sha256'] == '5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f'
+          assert not data['new_gpu_training'] and not data['promotion_approved']
+          assert all('prompt' not in r and 'token_ids' not in r for r in data['results'])
+          print('PASS: 16 CPU generations, matched templates, no raw prompts or token IDs')
+          PY
+      - name: Upload bounded diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run12-prompt-suffix-${{ github.run_id }}
+          path: ${{ runner.temp }}/prompt-suffix/
+          if-no-files-found: warn
+          retention-days: 30
