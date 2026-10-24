@@ -1,0 +1,45 @@
+{
+  "audit_date": "2026-10-24",
+  "training_run_id": 39921870784,
+  "static_preflight_run_id": 40060684728,
+  "cpu_run_id": 40060717009,
+  "code_sha": "03679e551f493156a9117d992d24d0cac865a2c5",
+  "model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "holdout_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "adapter_weights_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+  "artifact_id": 12546769462,
+  "artifact_zip_sha256": "cc4fb4d2652f1484132c19f65ca3fc61b22f2d6285af51d60cfea51270ac2b20",
+  "experiment_json_sha256": "230717134a2da4b459991a52867ea5311e3a42397e2d779158c332ca18b85d0e",
+  "device": "cpu",
+  "seed": 42,
+  "forced_unk_prefix_lengths": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "forward_passes": 40,
+  "matched_pairs": 20,
+  "unit_tests_passed": 72,
+  "summary": {
+    "candidate_higher_unk_probability": 5,
+    "candidate_lower_unk_probability": 15,
+    "mean_candidate_minus_base_probability": -0.02636106,
+    "base_unk_top1_count": 14,
+    "candidate_unk_top1_count": 15,
+    "blank_prompt_first_step": {
+      "base_processed_probability": 0.032997736,
+      "candidate_processed_probability": 0.096584624,
+      "base_rank": 3,
+      "candidate_rank": 1
+    },
+    "blank_prompt_after_forced_unk": "Both models ranked UNK first for 1..4 forced UNK tokens"
+  },
+  "new_gpu_training": false,
+  "new_model_answers": false,
+  "quality_certified": false,
+  "promotion_approved": false,
+  "root_cause_confirmed": false,
+  "next_experiment": "single-variable prompt template parity under fixed CPU inference; audit quality and safety before GPU"
+}
