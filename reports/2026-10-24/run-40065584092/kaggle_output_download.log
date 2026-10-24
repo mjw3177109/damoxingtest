@@ -1,0 +1,49 @@
+Downloading metrics.json to reports/2026-10-24/run-40065584092/kaggle_output/training_output
+  0%|          | 0.00/1.49k [00:00<?, ?B/s]100%|██████████| 1.49k/1.49k [00:00<00:00, 5.86MB/s]
+
+Output file downloaded to reports/2026-10-24/run-40065584092/kaggle_output/training_output/metrics.json
+Downloading previous_training.log to reports/2026-10-24/run-40065584092/kaggle_output/training_output
+  0%|          | 0.00/3.80k [00:00<?, ?B/s]100%|██████████| 3.80k/3.80k [00:00<00:00, 16.3MB/s]
+
+Output file downloaded to reports/2026-10-24/run-40065584092/kaggle_output/training_output/previous_training.log
+Downloading run_metadata.json to reports/2026-10-24/run-40065584092/kaggle_output/training_output
+  0%|          | 0.00/1.45k [00:00<?, ?B/s]100%|██████████| 1.45k/1.45k [00:00<00:00, 7.49MB/s]
+
+Output file downloaded to reports/2026-10-24/run-40065584092/kaggle_output/training_output/run_metadata.json
+Downloading samples.json to reports/2026-10-24/run-40065584092/kaggle_output/training_output
+  0%|          | 0.00/3.12k [00:00<?, ?B/s]100%|██████████| 3.12k/3.12k [00:00<00:00, 15.4MB/s]
+
+Output file downloaded to reports/2026-10-24/run-40065584092/kaggle_output/training_output/samples.json
+Downloading stage0_environment.md to reports/2026-10-24/run-40065584092/kaggle_output/training_output/stages
+  0%|          | 0.00/99.0 [00:00<?, ?B/s]100%|██████████| 99.0/99.0 [00:00<00:00, 654kB/s]
+
+Output file downloaded to reports/2026-10-24/run-40065584092/kaggle_output/training_output/stages/stage0_environment.md
+Downloading stage1_data_prep.md to reports/2026-10-24/run-40065584092/kaggle_output/training_output/stages
+  0%|          | 0.00/317 [00:00<?, ?B/s]100%|██████████| 317/317 [00:00<00:00, 1.71MB/s]
+
+Output file downloaded to reports/2026-10-24/run-40065584092/kaggle_output/training_output/stages/stage1_data_prep.md
+Downloading stage2_base_evaluation.md to reports/2026-10-24/run-40065584092/kaggle_output/training_output/stages
+  0%|          | 0.00/159 [00:00<?, ?B/s]100%|██████████| 159/159 [00:00<00:00, 1.14MB/s]
+
+Output file downloaded to reports/2026-10-24/run-40065584092/kaggle_output/training_output/stages/stage2_base_evaluation.md
+Downloading stage3_lora_training.md to reports/2026-10-24/run-40065584092/kaggle_output/training_output/stages
+  0%|          | 0.00/177 [00:00<?, ?B/s]100%|██████████| 177/177 [00:00<00:00, 1.21MB/s]
+
+Output file downloaded to reports/2026-10-24/run-40065584092/kaggle_output/training_output/stages/stage3_lora_training.md
+Downloading stage4_evaluation.md to reports/2026-10-24/run-40065584092/kaggle_output/training_output/stages
+  0%|          | 0.00/245 [00:00<?, ?B/s]100%|██████████| 245/245 [00:00<00:00, 1.79MB/s]
+
+Output file downloaded to reports/2026-10-24/run-40065584092/kaggle_output/training_output/stages/stage4_evaluation.md
+Downloading summary.md to reports/2026-10-24/run-40065584092/kaggle_output/training_output
+  0%|          | 0.00/807 [00:00<?, ?B/s]100%|██████████| 807/807 [00:00<00:00, 4.97MB/s]
+
+Output file downloaded to reports/2026-10-24/run-40065584092/kaggle_output/training_output/summary.md
+Downloading training.log to reports/2026-10-24/run-40065584092/kaggle_output/training_output
+  0%|          | 0.00/212 [00:00<?, ?B/s]100%|██████████| 212/212 [00:00<00:00, 1.62MB/s]
+
+Output file downloaded to reports/2026-10-24/run-40065584092/kaggle_output/training_output/training.log
+Downloading training_status.json to reports/2026-10-24/run-40065584092/kaggle_output/training_output
+  0%|          | 0.00/295 [00:00<?, ?B/s]100%|██████████| 295/295 [00:00<00:00, 2.05MB/s]
+
+Output file downloaded to reports/2026-10-24/run-40065584092/kaggle_output/training_output/training_status.json
+Kernel log downloaded to reports/2026-10-24/run-40065584092/kaggle_output/damoxingtest-gpt-2-daily-training.log 

@@ -1,0 +1,7 @@
+{
+  "status": "completed",
+  "skipped_no_changes": true,
+  "finished_at_utc": "2026-10-24T05:16:54.413375+00:00",
+  "reused_from_run": "reports/2026-10-23/run-39921870784",
+  "message": "No new data or training-recipe change; previous evidence was reused and no model training was performed."
+}
