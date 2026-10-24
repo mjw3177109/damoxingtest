@@ -40,5 +40,57 @@ class ReadabilityReviewTests(unittest.TestCase):
         self.assertTrue(result["base"]["manual_review_required"])
 
 
+
+class DecodeVisibilityTests(unittest.TestCase):
+    class FakeTokenizer:
+        all_special_ids = [0]
+        eos_token_id = 0
+        pad_token_id = 0
+
+        def decode(self, ids, skip_special_tokens=True):
+            mapping = {0: "[SEP]", 1: " ", 2: "好", 3: ""}
+            return "".join(
+                "" if token == 0 and skip_special_tokens else mapping[token]
+                for token in ids
+            )
+
+    def setUp(self):
+        self.tokenizer = self.FakeTokenizer()
+
+    def test_all_special_tokens_explain_blank(self):
+        result = module.diagnose_decode_visibility([0] * 64, self.tokenizer)
+        self.assertEqual(result["category"], "special_tokens_only")
+        self.assertEqual(result["special_token_count"], 64)
+        self.assertEqual(result["eos_token_count"], 64)
+        self.assertEqual(result["stripped_decode_length"], 0)
+
+    def test_whitespace_only_explains_stripped_blank(self):
+        result = module.diagnose_decode_visibility([1] * 64, self.tokenizer)
+        self.assertEqual(result["category"], "whitespace_only")
+        self.assertEqual(result["filtered_whitespace_count"], 64)
+        self.assertEqual(result["special_token_count"], 0)
+
+    def test_visible_chinese_is_not_blank(self):
+        result = module.diagnose_decode_visibility([2, 0], self.tokenizer)
+        self.assertEqual(result["category"], "visible_text")
+        self.assertEqual(result["stripped_decode_length"], 1)
+
+    def test_empty_generation_is_distinct(self):
+        result = module.diagnose_decode_visibility([], self.tokenizer)
+        self.assertEqual(result["category"], "no_generated_tokens")
+
+    def test_filtered_non_special_ids_are_distinct(self):
+        result = module.diagnose_decode_visibility([3] * 64, self.tokenizer)
+        self.assertEqual(result["category"], "decoder_filtered_all")
+        self.assertEqual(result["special_token_count"], 0)
+
+    def test_no_raw_text_or_token_ids_in_report(self):
+        result = module.diagnose_decode_visibility([2, 0], self.tokenizer)
+        self.assertNotIn("token_ids", result)
+        self.assertNotIn("output", result)
+        self.assertNotIn("好", str(result))
+
+
+
 if __name__ == "__main__":
     unittest.main()
