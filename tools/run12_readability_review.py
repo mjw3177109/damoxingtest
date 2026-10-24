@@ -30,6 +30,40 @@ def safe_excerpt(text, limit=160):
 
 
 
+
+def count_special_token_categories(token_ids, tokenizer):
+    """Return only aggregate special-token class counts, never raw token IDs.
+
+    A tokenizer can alias classes (for example EOS == SEP).  Assign each
+    generated special token to the first matching class in a fixed priority
+    order so counts are mutually exclusive and sum to special_token_count.
+    """
+    special_ids = set(getattr(tokenizer, "all_special_ids", []) or [])
+    classes = (
+        ("unk", "unk_token_id"),
+        ("cls", "cls_token_id"),
+        ("mask", "mask_token_id"),
+        ("eos", "eos_token_id"),
+        ("pad", "pad_token_id"),
+        ("sep", "sep_token_id"),
+        ("bos", "bos_token_id"),
+    )
+    counts = {name: 0 for name, _ in classes}
+    counts["other_special"] = 0
+    for raw_id in token_ids:
+        token_id = int(raw_id)
+        if token_id not in special_ids:
+            continue
+        category = next(
+            (name for name, attr in classes
+             if getattr(tokenizer, attr, None) is not None
+             and token_id == getattr(tokenizer, attr)),
+            "other_special",
+        )
+        counts[category] += 1
+    return counts
+
+
 def diagnose_decode_visibility(token_ids, tokenizer):
     """Classify a blank generation without exporting raw tokens or unredacted text.
 
@@ -58,6 +92,7 @@ def diagnose_decode_visibility(token_ids, tokenizer):
         "category": category,
         "token_count": len(ids),
         "special_token_count": sum(value in special_ids for value in ids),
+        "special_token_categories": count_special_token_categories(ids, tokenizer),
         "eos_token_count": sum(value == eos_id for value in ids) if eos_id is not None else 0,
         "pad_token_count": sum(value == pad_id for value in ids) if pad_id is not None else 0,
         "unfiltered_decode_length": len(unfiltered),
