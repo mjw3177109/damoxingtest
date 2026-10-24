@@ -1,0 +1,48 @@
+{
+  "audit_date": "2026-10-24",
+  "training_run_id": 39921870784,
+  "cpu_run_id": 40056542877,
+  "static_preflight_run_id": 40056516440,
+  "code_sha": "1cb467e67336299cd94ff37fd5fec59f1e85a658",
+  "model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "holdout_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "artifact_id": 12545676065,
+  "artifact_zip_sha256": "8cf22daa858ea37d8347981c22a8ca22ae587be4a6852f0c9ad40c662c7182a7",
+  "review_json_sha256": "0a9cd4a2863a043d4c6e11a6e49a0228ad54e5e3d57c8206686fbc144dbb64f1",
+  "device": "cpu",
+  "new_gpu_training": false,
+  "generations": 8,
+  "candidate": {
+    "count": 4,
+    "punctuation_only": 2,
+    "contains_chinese": 1,
+    "eos": 1
+  },
+  "base": {
+    "count": 4,
+    "punctuation_only": 0,
+    "contains_chinese": 4,
+    "eos": 1
+  },
+  "blank_candidate_prompt_index": 3,
+  "blank_output": {
+    "generated_token_count": 64,
+    "special_token_count": 64,
+    "special_token_categories": {
+      "unk": 64,
+      "cls": 0,
+      "mask": 0,
+      "eos": 0,
+      "pad": 0,
+      "sep": 0,
+      "bos": 0,
+      "other_special": 0
+    },
+    "filtered_decode_length": 0,
+    "stop_reason": "max_new_tokens"
+  },
+  "root_cause_scope": "Blank decoded output directly caused by 64 generated UNK special tokens; cause of model preference for UNK is unverified",
+  "quality_certified": false,
+  "promotion_approved": false,
+  "requires_manual_review": true
+}
