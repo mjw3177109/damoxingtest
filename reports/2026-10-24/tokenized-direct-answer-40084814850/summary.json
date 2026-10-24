@@ -1,0 +1,32 @@
+{
+  "created_at_utc": "2026-10-24T10:10:13.019014+00:00",
+  "source_training_run_id": 39921870784,
+  "previous_cpu_run_id": 40076337028,
+  "experiment_run_id": 40084814850,
+  "artifact_id": 12556531644,
+  "code_sha": "52c463d830f54094c2dfec6881460eef0894d9d2",
+  "report_commit": "30307cf86e6e4908bf9d3c0c9fd8e09d6169b491",
+  "holdout_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "adapter_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+  "artifact_zip_sha256": "8a215b449e505c3ffeee830ab0704086859e7bc51c4963a085f736ced32374d3",
+  "prompt_count": 4,
+  "changed_tokenizations": 4,
+  "original_token_counts": [
+    38,
+    41,
+    42,
+    34
+  ],
+  "variant_token_counts": [
+    51,
+    54,
+    55,
+    47
+  ],
+  "model_forward_passes": 0,
+  "new_gpu_training": false,
+  "new_model_samples": false,
+  "quality_certified": false,
+  "promotion_approved": false,
+  "conclusion": "Actual tokenization changed in all four fixed prompts; no quality improvement demonstrated."
+}
