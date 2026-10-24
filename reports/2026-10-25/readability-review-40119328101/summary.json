@@ -1,0 +1,45 @@
+{
+  "created_at_utc": "2026-10-24T18:09:08.097511+00:00",
+  "audit_report_written_at_local": "2026-10-25 02:09 Asia/Shanghai",
+  "repository": "mjw3177109/damoxingtest",
+  "experiment_run_id": 40119328101,
+  "experiment_code_sha": "1faa5a040481dcf8ff8966902a6c32eb6f9e1aa6",
+  "source_training_run_id": 39921870784,
+  "artifact_id": 12569273751,
+  "artifact_sha256": "1e24f9cd78c7845dceae98d185709438886a7f9e6ee7ce2d954912e55c72cf5e",
+  "train_sha256": "ad2dfcb5f4549981d555b570e255f54b98c7162c52d46f72af147dc3a035847c",
+  "eval_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "gpu_training_performed": false,
+  "device": "cpu",
+  "generation_count": 8,
+  "max_new_tokens": 64,
+  "no_repeat_ngram_size": 0,
+  "repetition_penalty": 1.12,
+  "do_sample": false,
+  "seed": "42+prompt_index",
+  "ci_run_id": 40119281356,
+  "ci_tests_passed": 131,
+  "results": {
+    "base": {
+      "count": 4,
+      "punctuation_only": 0,
+      "contains_chinese": 4,
+      "eos": 1,
+      "special_tokens_only_blank": 0,
+      "manual_direct_answer": 0
+    },
+    "candidate": {
+      "count": 4,
+      "punctuation_only": 2,
+      "contains_chinese": 1,
+      "eos": 1,
+      "special_tokens_only_blank": 1,
+      "unk_tokens_in_blank_sample": 64,
+      "manual_direct_answer": 0
+    }
+  },
+  "promotion_approved": false,
+  "quality_certified": false,
+  "comparison_note": "Prior bigram experiment used 32 new tokens; not directly comparable with this 64-token original-decoding review.",
+  "next_experiment": "Same 4 prompts and 64-token cap; candidate no_repeat_ngram_size 0 versus 2; evaluate sanitized direct answers and safety."
+}
