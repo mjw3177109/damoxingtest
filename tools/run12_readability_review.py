@@ -118,11 +118,24 @@ def summarize(rows):
     } for phase in ("base", "candidate")}
 
 
+def decoding_kwargs(no_repeat_ngram_size):
+    """Allow only pinned control or bigram decoding settings."""
+    if type(no_repeat_ngram_size) is not int or no_repeat_ngram_size not in (0, 2):
+        raise ValueError("Only no_repeat_ngram_size 0 or 2 is permitted")
+    return {
+        "max_new_tokens": 64,
+        "do_sample": False,
+        "repetition_penalty": 1.12,
+        "no_repeat_ngram_size": no_repeat_ngram_size,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--adapter", type=Path, required=True)
     parser.add_argument("--eval-data", type=Path, default=Path("data/safety_humanity_eval_v1.jsonl"))
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--no-repeat-ngram-size", type=int, choices=(0, 2), default=0)
     args = parser.parse_args()
     if not (args.adapter / "adapter_config.json").is_file():
         parser.error("Pinned Run 12 Adapter missing; refusing fallback")
@@ -152,8 +165,7 @@ def main():
             torch.manual_seed(42 + index)
             with torch.inference_mode():
                 generated = model.generate(
-                    **inputs, max_new_tokens=64, do_sample=False,
-                    repetition_penalty=1.12,
+                    **inputs, **decoding_kwargs(args.no_repeat_ngram_size),
                     pad_token_id=tokenizer.pad_token_id,
                     eos_token_id=tokenizer.eos_token_id,
                 )
@@ -181,6 +193,7 @@ def main():
         "device": "cpu",
         "experiment": "base vs rejected LoRA candidate, same four prompts and train-parity inputs",
         "generations": 8,
+        "decoding": decoding_kwargs(args.no_repeat_ngram_size),
         "summary": summary,
         "results": rows,
         "quality_certified": False,

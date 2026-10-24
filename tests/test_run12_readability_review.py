@@ -43,6 +43,25 @@ class ReadabilityReviewTests(unittest.TestCase):
     def test_safe_excerpt_bounded(self):
         self.assertLessEqual(len(module.safe_excerpt("好" * 200)), 161)
 
+    def test_control_decoding_is_pinned(self):
+        kwargs = module.decoding_kwargs(0)
+        self.assertEqual(kwargs["no_repeat_ngram_size"], 0)
+        self.assertEqual(kwargs["max_new_tokens"], 64)
+        self.assertEqual(kwargs["repetition_penalty"], 1.12)
+        self.assertFalse(kwargs["do_sample"])
+
+    def test_bigram_decoding_changes_only_one_factor(self):
+        control = module.decoding_kwargs(0)
+        bigram = module.decoding_kwargs(2)
+        self.assertEqual(bigram["no_repeat_ngram_size"], 2)
+        self.assertEqual({k: v for k, v in control.items() if k != "no_repeat_ngram_size"},
+                         {k: v for k, v in bigram.items() if k != "no_repeat_ngram_size"})
+
+    def test_unsupported_decoding_rejected(self):
+        for value in (-1, 1, 3, True, "2", None):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                module.decoding_kwargs(value)
+
     def test_rejects_missing_pair(self):
         with self.assertRaisesRegex(ValueError, "eight"):
             module.summarize([])
