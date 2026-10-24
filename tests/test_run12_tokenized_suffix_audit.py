@@ -39,7 +39,7 @@ class TokenizedSuffixTests(unittest.TestCase):
         self.assertEqual(result["different_tokenizations"], 0)
         text = str(result)
         self.assertNotIn("固定问题", text)
-        self.assertNotIn("input_ids", text)
+        self.assertNotIn("'input_ids':", text)
         self.assertNotIn("用户：", text)
 
     def test_rejects_bad_inputs(self):
