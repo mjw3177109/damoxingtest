@@ -1,0 +1,97 @@
+name: GPT-2 Run 12 Punctuation Feedback CPU Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/run12-punctuation-feedback-cpu.yml"
+      - "tools/run12_punctuation_feedback_cpu.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gpt2-run12-punctuation-feedback-cpu
+  cancel-in-progress: false
+
+jobs:
+  feedback-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download exact rejected Run 12 adapter (read-only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run12-source"
+          gh run download 39921870784 --repo "$GITHUB_REPOSITORY" \
+            --name gpt2-training-39921870784 --dir "$RUNNER_TEMP/run12-source"
+          python - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "run12-source"
+          matches = [p.parent for p in root.rglob("adapter_config.json")
+                     if "/run-39921870784/kaggle_output/training_output/adapter/" in "/" + p.as_posix()]
+          if len(matches) != 1:
+              raise RuntimeError("Expected one exact rejected adapter")
+          adapter = matches[0]
+          expected = "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c"
+          if hashlib.sha256((adapter / "adapter_model.safetensors").read_bytes()).hexdigest() != expected:
+              raise RuntimeError("Adapter SHA-256 mismatch")
+          if not (adapter / "tokenizer_config.json").is_file():
+              raise RuntimeError("Pinned tokenizer missing")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+              f.write("RUN12_ADAPTER_DIR=" + str(adapter) + "\n")
+          print("PASS: exact rejected Run 12 adapter; no promotion")
+          PY
+      - name: Install pinned CPU dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --no-cache-dir 'torch==2.5.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-cache-dir 'transformers==4.46.3' 'peft==0.13.2' 'accelerate==1.1.1'
+      - name: Run offline regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Run 32 bounded CPU forwards
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/punctuation-feedback"
+          python tools/run12_punctuation_feedback_cpu.py \
+            --adapter "$RUN12_ADAPTER_DIR" \
+            --eval-data data/safety_humanity_eval_v1.jsonl \
+            --output "$RUNNER_TEMP/punctuation-feedback/review.json"
+      - name: Validate filtered, non-promoting evidence
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ["RUNNER_TEMP"]) / "punctuation-feedback/review.json"
+          data = json.loads(p.read_text(encoding="utf-8"))
+          assert data["device"] == "cpu" and data["forward_passes"] == 32
+          assert data["summary"]["matched_pairs"] == 16
+          assert not data["new_gpu_training"] and not data["new_model_answers"]
+          assert not data["promotion_approved"]
+          for row in data["rows"]:
+              assert not {"token_ids", "prompt", "output", "logits", "history"} & row.keys()
+          print("PASS: privacy-filtered CPU evidence; no training or promotion")
+          PY
+      - name: Upload filtered diagnostic artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run12-punctuation-feedback-${{ github.run_id }}
+          path: ${{ runner.temp }}/punctuation-feedback/
+          if-no-files-found: warn
+          retention-days: 30
