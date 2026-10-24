@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/run12-readability-review.yml"
+      - "tools/run12_readability_review.py"
   workflow_dispatch:
 
 permissions:
@@ -59,7 +60,7 @@ jobs:
           python -m pip install --no-cache-dir 'transformers==4.46.3' 'peft==0.13.2' 'accelerate==1.1.1'
       - name: Run offline unit tests
         run: python -m unittest discover -s tests -v
-      - name: Execute eight bounded CPU generations
+      - name: Execute eight bounded CPU generations with blank-output diagnostics
         shell: bash
         run: |
           set -euo pipefail
