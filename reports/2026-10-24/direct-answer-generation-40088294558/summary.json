@@ -1,0 +1,57 @@
+{
+  "date_utc": "2026-10-24",
+  "actions_run_id": 40088294558,
+  "source_training_run_id": 39921870784,
+  "code_sha": "9d2138f86549cf9fa76b969e7c84eb66be70a5fb",
+  "artifact_id": 12558400090,
+  "artifact_zip_sha256": "7d1f4fd7c64ec6f107fd833fa01808a6b5ac4154f732454c280266fdd8e26096",
+  "adapter_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+  "eval_data_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "device": "cpu",
+  "generations": 16,
+  "gpu_training_steps": 0,
+  "control_matches_previous_cpu_review": true,
+  "metrics": {
+    "base/control": {
+      "count": 4,
+      "punctuation_only": 0,
+      "blank_output": 0,
+      "contains_chinese": 4,
+      "eos": 1,
+      "unk_only": 0,
+      "mean_longest_identical_run": 1.25
+    },
+    "base/direct_answer": {
+      "count": 4,
+      "punctuation_only": 3,
+      "blank_output": 0,
+      "contains_chinese": 1,
+      "eos": 0,
+      "unk_only": 0,
+      "mean_longest_identical_run": 48.25
+    },
+    "candidate/control": {
+      "count": 4,
+      "punctuation_only": 2,
+      "blank_output": 1,
+      "contains_chinese": 1,
+      "eos": 1,
+      "unk_only": 1,
+      "mean_longest_identical_run": 32.25
+    },
+    "candidate/direct_answer": {
+      "count": 4,
+      "punctuation_only": 3,
+      "blank_output": 0,
+      "contains_chinese": 1,
+      "eos": 1,
+      "unk_only": 0,
+      "mean_longest_identical_run": 48.25
+    }
+  },
+  "conclusion": "negative_prompt_intervention",
+  "quality_certified": false,
+  "promotion_approved": false,
+  "next_step": "CPU-only first-token punctuation/UNK/EOS logit comparison; no GPU training"
+}
