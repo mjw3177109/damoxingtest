@@ -1,0 +1,46 @@
+{
+  "date_utc": "2026-10-24",
+  "actions_run_id": 40100735421,
+  "source_training_run_id": 39921870784,
+  "source_first_step_audit_run_id": 40092707377,
+  "code_sha": "c393165b51dcf2193474f894672273520deea303",
+  "artifact_id": 12562627822,
+  "artifact_zip_sha256": "a059be928199382c87cded81616fd077c719d6f4bfc6d0238d4c38df780c14d2",
+  "adapter_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+  "eval_data_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "device": "cpu",
+  "forward_passes": 32,
+  "matched_pairs": 16,
+  "forced_punctuation_counts": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "punctuation_top1_by_forced_count": {
+    "base": {
+      "0": 0,
+      "1": 4,
+      "2": 4,
+      "3": 4
+    },
+    "candidate": {
+      "0": 2,
+      "1": 4,
+      "2": 4,
+      "3": 4
+    }
+  },
+  "candidate_minus_base_mean_punctuation_probability_by_forced_count": {
+    "0": 0.003220863,
+    "1": -0.126575394,
+    "2": -0.028547091,
+    "3": -0.106040927
+  },
+  "new_gpu_training_steps": 0,
+  "new_model_answers": 0,
+  "promotion_approved": false,
+  "conclusion": "Both base and rejected LoRA have punctuation-category Top1 on all four prompts after a single forced period; candidate differs most at initiation (2/4 vs 0/4). Category Top1 does not prove identical-token repetition.",
+  "quality_certified": false,
+  "next_step": "CPU-only same-token period probability/rank and EOS trajectory check, with fixed history and exact token parity; no GPU retraining until quality gate evidence."
+}
