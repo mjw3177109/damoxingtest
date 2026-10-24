@@ -256,7 +256,7 @@ jobs:
                   reasons.append("samples.json missing")
               if candidate_adapter.is_dir() and (candidate_adapter / "adapter_config.json").is_file():
                   adapter_dir = candidate_adapter
-              else:
+              elif not status.get("skipped_no_changes"):
                   reasons.append("LoRA adapter files missing")
           if status.get("skipped_no_changes"):
               reasons.append("No new training candidate was created; prior evidence was reused.")
@@ -278,7 +278,8 @@ jobs:
           gate = {
               "checked_at_utc": datetime.now(timezone.utc).isoformat(),
               "run_id": os.environ.get("GITHUB_RUN_ID"),
-              "candidate_status": status.get("status", "missing"),
+              "candidate_status": "skipped_no_changes" if status.get("skipped_no_changes") else status.get("status", "missing"),
+              "evidence_reused": bool(status.get("skipped_no_changes")),
               "promotion_approved": not reasons,
               "reasons": reasons,
               "meaningful_generation_samples": meaningful,
