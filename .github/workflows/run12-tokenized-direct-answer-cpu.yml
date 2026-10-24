@@ -1,0 +1,98 @@
+name: GPT-2 Run 12 Tokenized Direct Answer CPU Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/run12-tokenized-direct-answer-cpu.yml"
+      - "tools/run12_tokenized_direct_answer_audit.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gpt2-run12-tokenized-direct-answer-cpu
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Retrieve and verify exact rejected Run 12 adapter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run12-source"
+          gh run download 39921870784 --repo "$GITHUB_REPOSITORY" \
+            --name gpt2-training-39921870784 --dir "$RUNNER_TEMP/run12-source"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'run12-source'
+          matches = [p for p in root.rglob('adapter_config.json')
+                     if '/run-39921870784/kaggle_output/training_output/adapter/' in '/' + p.as_posix()]
+          if len(matches) != 1:
+              raise RuntimeError('Expected one exact rejected Run 12 adapter')
+          adapter = matches[0].parent
+          weights = adapter / 'adapter_model.safetensors'
+          expected = '979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c'
+          if not weights.is_file() or hashlib.sha256(weights.read_bytes()).hexdigest() != expected:
+              raise RuntimeError('Adapter weights SHA-256 mismatch')
+          if json.loads(matches[0].read_text(encoding='utf-8')).get('base_model_name_or_path') != 'uer/gpt2-chinese-cluecorpussmall':
+              raise RuntimeError('Unexpected adapter base model')
+          if not (adapter / 'tokenizer_config.json').is_file():
+              raise RuntimeError('Exact rejected adapter tokenizer is missing; no fallback')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              handle.write('RUN12_ADAPTER_DIR=' + str(adapter) + '\n')
+          print('PASS: exact rejected adapter/tokenizer pinned; no promotion')
+          PY
+      - name: Install pinned tokenizer-only dependency
+        run: python -m pip install --no-cache-dir 'transformers==4.46.3'
+      - name: Run repository offline regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Verify actual token changes on fixed holdout
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/direct-answer"
+          python tools/run12_tokenized_direct_answer_audit.py \
+            --adapter "$RUN12_ADAPTER_DIR" \
+            --eval-data data/safety_humanity_eval_v1.jsonl \
+            --output "$RUNNER_TEMP/direct-answer/audit.json"
+      - name: Enforce no-training and privacy evidence contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'direct-answer/audit.json'
+          data = json.loads(path.read_text(encoding='utf-8'))
+          assert data['count'] == data['changed_tokenizations'] == 4
+          assert data['unchanged_tokenizations'] == 0
+          assert data['holdout_sha256'] == '5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f'
+          assert data['tokenizer_source'] == 'exact_rejected_run12_adapter'
+          assert data['model_forward_passes'] == 0
+          assert not data['new_gpu_training'] and not data['new_model_samples']
+          assert not data['promotion_approved'] and not data['quality_certified']
+          for row in data['results']:
+              assert row['token_sequence_changed']
+              assert 'prompt' not in row and 'input_ids' not in row and 'token_ids' not in row
+          print('PASS: 4/4 token changes, zero model forward passes, no raw prompt/IDs')
+          PY
+      - name: Upload bounded tokenizer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run12-tokenized-direct-answer-${{ github.run_id }}
+          path: ${{ runner.temp }}/direct-answer/
+          if-no-files-found: warn
+          retention-days: 30
