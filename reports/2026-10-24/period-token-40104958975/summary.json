@@ -1,0 +1,58 @@
+{
+  "date_utc": "2026-10-24",
+  "actions_run_id": 40104958975,
+  "static_preflight_run_id": 40104917038,
+  "source_training_run_id": 39921870784,
+  "previous_category_run_id": 40100735421,
+  "code_sha": "8436cc32921775c75ed43e78cd8b81d5953dd36c",
+  "artifact_id": 12564372187,
+  "artifact_zip_sha256": "a2941f2693d78b1d25258985e92d29886fa751bbf11c953669fec761ec7f3f06",
+  "adapter_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+  "eval_data_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "device": "cpu",
+  "forward_passes": 32,
+  "matched_pairs": 16,
+  "repetition_penalty": 1.12,
+  "forced_period_counts": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "period_top1_by_forced_count": {
+    "base": {
+      "0": 0,
+      "1": 4,
+      "2": 4,
+      "3": 4
+    },
+    "candidate": {
+      "0": 2,
+      "1": 4,
+      "2": 4,
+      "3": 4
+    }
+  },
+  "mean_period_probability_by_forced_count": {
+    "base": {
+      "0": 0.035395041,
+      "1": 0.367080362,
+      "2": 0.888920756,
+      "3": 0.486331624
+    },
+    "candidate": {
+      "0": 0.04989785,
+      "1": 0.241902907,
+      "2": 0.859335281,
+      "3": 0.380045456
+    }
+  },
+  "unit_tests_passed": 114,
+  "new_gpu_training_steps": 0,
+  "new_model_answers": 0,
+  "promotion_approved": false,
+  "quality_certified": false,
+  "conclusion": "After one forced period, both base and rejected LoRA have the exact same period token as next-token Top1 on all 4 fixed prompts; not evidence of quality improvement or causal proof.",
+  "next_step": "Bounded CPU free-generation trajectory comparison with strict output limit, no GPU until validated quality gate."
+}
