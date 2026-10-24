@@ -1,0 +1,99 @@
+name: GPT-2 Run 12 Free-Period CPU Trajectory
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/run12-free-period-trajectory-cpu.yml"
+      - "tools/run12_free_period_trajectory.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gpt2-run12-free-period-trajectory-cpu
+  cancel-in-progress: false
+
+jobs:
+  free-period-trajectory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download exact rejected Run 12 adapter (read-only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run12-source"
+          gh run download 39921870784 --repo "$GITHUB_REPOSITORY" \
+            --name gpt2-training-39921870784 --dir "$RUNNER_TEMP/run12-source"
+          python - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "run12-source"
+          matches = [p.parent for p in root.rglob("adapter_config.json")
+                     if "/run-39921870784/kaggle_output/training_output/adapter/" in "/" + p.as_posix()]
+          if len(matches) != 1:
+              raise RuntimeError("Expected exactly one rejected Run 12 adapter")
+          adapter = matches[0]
+          expected = "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c"
+          if hashlib.sha256((adapter / "adapter_model.safetensors").read_bytes()).hexdigest() != expected:
+              raise RuntimeError("Adapter SHA-256 mismatch")
+          if not (adapter / "tokenizer_config.json").is_file():
+              raise RuntimeError("Pinned tokenizer missing")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+              f.write("RUN12_ADAPTER_DIR=" + str(adapter) + "\n")
+          print("PASS: exact rejected adapter; no promotion")
+          PY
+      - name: Install pinned CPU dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --no-cache-dir 'torch==2.5.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-cache-dir 'transformers==4.46.3' 'peft==0.13.2' 'accelerate==1.1.1'
+      - name: Run offline regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Run eight bounded CPU free generations
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/free-period"
+          python tools/run12_free_period_trajectory.py \
+            --adapter "$RUN12_ADAPTER_DIR" \
+            --eval-data data/safety_humanity_eval_v1.jsonl \
+            --output "$RUNNER_TEMP/free-period/review.json"
+      - name: Validate non-promoting, privacy-filtered evidence
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ["RUNNER_TEMP"]) / "free-period/review.json"
+          data = json.loads(p.read_text(encoding="utf-8"))
+          assert data["device"] == "cpu" and data["generations"] == 8
+          assert data["source_training_run_id"] == 39921870784
+          assert not data["new_gpu_training"] and not data["promotion_approved"]
+          assert not data["new_model_answers"]
+          assert set(data["summary"]) == {"base", "candidate"}
+          assert len(data["rows"]) == 8
+          forbidden = {"token_ids", "prompt", "output", "logits", "decoded_text", "raw_prompt"}
+          assert all(not forbidden.intersection(row) for row in data["rows"])
+          print("PASS: eight bounded paths, no raw tokens, no promotion")
+          PY
+      - name: Upload filtered CPU diagnostic artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run12-free-period-${{ github.run_id }}
+          path: ${{ runner.temp }}/free-period/
+          if-no-files-found: warn
+          retention-days: 30
