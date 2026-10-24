@@ -1,0 +1,62 @@
+{
+  "date_utc": "2026-10-24",
+  "actions_run_id": 40092707377,
+  "source_training_run_id": 39921870784,
+  "previous_generation_run_id": 40088294558,
+  "code_sha": "425a02dfdd3a8396662f9087d4711fd134b8f302",
+  "artifact_id": 12559562565,
+  "artifact_zip_sha256": "5cea48986ba24119325b393b70da3d5c85ac133389c2acb937281f694508e5da",
+  "adapter_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+  "eval_data_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
+  "model_revision": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
+  "device": "cpu",
+  "forward_passes": 16,
+  "new_gpu_training_steps": 0,
+  "new_model_answers": 0,
+  "metrics": {
+    "base/control": {
+      "punctuation_top1": 0,
+      "unk_top1": 0,
+      "mean_punctuation_probability": 0.106645836,
+      "mean_unk_probability": 0.02435688,
+      "mean_eos_probability": 0.001879118
+    },
+    "base/direct_answer": {
+      "punctuation_top1": 3,
+      "unk_top1": 0,
+      "mean_punctuation_probability": 0.10559625,
+      "mean_unk_probability": 0.016183324,
+      "mean_eos_probability": 0.001578261
+    },
+    "candidate/control": {
+      "punctuation_top1": 2,
+      "unk_top1": 1,
+      "mean_punctuation_probability": 0.109866699,
+      "mean_unk_probability": 0.03612401,
+      "mean_eos_probability": 0.016685094
+    },
+    "candidate/direct_answer": {
+      "punctuation_top1": 3,
+      "unk_top1": 0,
+      "mean_punctuation_probability": 0.100285278,
+      "mean_unk_probability": 0.017756904,
+      "mean_eos_probability": 0.017949872
+    }
+  },
+  "mean_variant_minus_control": {
+    "base": {
+      "unk": -0.008173556,
+      "eos": -0.000300857,
+      "punctuation": -0.001049586
+    },
+    "candidate": {
+      "unk": -0.018367106,
+      "eos": 0.001264778,
+      "punctuation": -0.009581422
+    }
+  },
+  "conclusion": "first_step_punctuation_top1_increases_despite_lower_mean_category_mass",
+  "quality_certified": false,
+  "promotion_approved": false,
+  "next_step": "CPU-only fixed-prefix punctuation feedback audit; no GPU training"
+}
