@@ -1,0 +1,100 @@
+name: GPT-2 Run 12 First-Step Category CPU Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/run12-first-step-category-cpu.yml"
+      - "tools/run12_first_step_category_cpu.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gpt2-run12-first-step-category-cpu
+  cancel-in-progress: false
+
+jobs:
+  category-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download and verify exact rejected Run 12 Adapter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run12-source"
+          gh run download 39921870784 --repo "$GITHUB_REPOSITORY" \
+            --name gpt2-training-39921870784 --dir "$RUNNER_TEMP/run12-source"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'run12-source'
+          matches = [p for p in root.rglob('adapter_config.json')
+                     if '/run-39921870784/kaggle_output/training_output/adapter/' in '/' + p.as_posix()]
+          if len(matches) != 1:
+              raise RuntimeError('Expected one exact rejected Run 12 adapter')
+          adapter = matches[0].parent
+          weights = adapter / 'adapter_model.safetensors'
+          expected = '979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c'
+          if not weights.is_file() or hashlib.sha256(weights.read_bytes()).hexdigest() != expected:
+              raise RuntimeError('Adapter SHA-256 mismatch')
+          if json.loads(matches[0].read_text(encoding='utf-8')).get('base_model_name_or_path') != 'uer/gpt2-chinese-cluecorpussmall':
+              raise RuntimeError('Unexpected base model')
+          if not (adapter / 'tokenizer_config.json').is_file():
+              raise RuntimeError('Pinned tokenizer missing')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              handle.write('RUN12_ADAPTER_DIR=' + str(adapter) + '\n')
+          print('PASS: exact rejected adapter pinned; no promotion')
+          PY
+      - name: Install pinned CPU dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --no-cache-dir 'torch==2.5.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-cache-dir 'transformers==4.46.3' 'peft==0.13.2' 'accelerate==1.1.1'
+      - name: Run offline regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Run exactly 16 bounded CPU forward passes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/first-step-category"
+          python tools/run12_first_step_category_cpu.py \
+            --adapter "$RUN12_ADAPTER_DIR" \
+            --eval-data data/safety_humanity_eval_v1.jsonl \
+            --output "$RUNNER_TEMP/first-step-category/review.json"
+      - name: Validate non-promoting experiment evidence
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'first-step-category/review.json'
+          data = json.loads(p.read_text(encoding='utf-8'))
+          assert data['forward_passes'] == 16 and len(data['rows']) == 16
+          assert data['summary']['paired_comparisons'] == 8
+          assert data['device'] == 'cpu' and not data['new_gpu_training']
+          assert not data['new_model_answers'] and not data['promotion_approved']
+          for row in data['rows']:
+              assert not {'token_ids', 'output', 'prompt', 'logits'} & row.keys()
+          print('PASS: 16 privacy-filtered CPU forwards, no model promotion')
+          PY
+      - name: Upload filtered diagnostic only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run12-first-step-category-${{ github.run_id }}
+          path: ${{ runner.temp }}/first-step-category/
+          if-no-files-found: warn
+          retention-days: 30
