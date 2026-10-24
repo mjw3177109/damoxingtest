@@ -92,5 +92,50 @@ class DecodeVisibilityTests(unittest.TestCase):
 
 
 
+class SpecialTokenCategoryTests(unittest.TestCase):
+    class FakeTokenizer:
+        # EOS and SEP deliberately share an ID; raw IDs are never exported.
+        all_special_ids = [11, 12, 13, 14, 15, 16, 17]
+        unk_token_id = 11
+        cls_token_id = 12
+        mask_token_id = 13
+        eos_token_id = 14
+        sep_token_id = 14
+        pad_token_id = 15
+        bos_token_id = 16
+
+        def decode(self, ids, skip_special_tokens=True):
+            return "".join(
+                "" if skip_special_tokens and token in self.all_special_ids
+                else "[SPECIAL]" if token in self.all_special_ids
+                else "好"
+                for token in ids
+            )
+
+    def test_each_special_token_counted_once_even_with_aliases(self):
+        ids = [11, 12, 13, 14, 15, 16, 17, 17, 99]
+        counts = module.count_special_token_categories(ids, self.FakeTokenizer())
+        self.assertEqual(sum(counts.values()), 8)
+        self.assertEqual(counts["unk"], 1)
+        self.assertEqual(counts["cls"], 1)
+        self.assertEqual(counts["mask"], 1)
+        self.assertEqual(counts["eos"], 1)
+        self.assertEqual(counts["sep"], 0)
+        self.assertEqual(counts["other_special"], 2)
+
+    def test_all_unknown_special_tokens_produce_only_class_counts(self):
+        ids = [11] * 64
+        result = module.diagnose_decode_visibility(ids, self.FakeTokenizer())
+        self.assertEqual(result["category"], "special_tokens_only")
+        self.assertEqual(result["special_token_categories"]["unk"], 64)
+        self.assertEqual(sum(result["special_token_categories"].values()), 64)
+        self.assertNotIn("token_ids", result)
+        self.assertNotIn("raw_ids", result)
+
+    def test_regular_tokens_do_not_count_as_special(self):
+        counts = module.count_special_token_categories([99, 99], self.FakeTokenizer())
+        self.assertEqual(sum(counts.values()), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
