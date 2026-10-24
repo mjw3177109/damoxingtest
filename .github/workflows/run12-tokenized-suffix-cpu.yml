@@ -1,0 +1,94 @@
+name: GPT-2 Run 12 Tokenized Suffix CPU Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/run12-tokenized-suffix-cpu.yml"
+      - "tools/run12_tokenized_suffix_audit.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gpt2-run12-tokenized-suffix-cpu
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Retrieve exact rejected Run 12 tokenizer files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run12-source"
+          gh run download 39921870784 --repo "$GITHUB_REPOSITORY" \
+            --name gpt2-training-39921870784 --dir "$RUNNER_TEMP/run12-source"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'run12-source'
+          matches = [p for p in root.rglob('adapter_config.json')
+                     if '/run-39921870784/kaggle_output/training_output/adapter/' in '/' + p.as_posix()]
+          if len(matches) != 1:
+              raise RuntimeError('Expected exactly one rejected Run 12 Adapter')
+          adapter = matches[0].parent
+          weights = adapter / 'adapter_model.safetensors'
+          expected = '979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c'
+          if not weights.is_file() or hashlib.sha256(weights.read_bytes()).hexdigest() != expected:
+              raise RuntimeError('Rejected Run 12 Adapter SHA-256 mismatch')
+          if json.loads(matches[0].read_text(encoding='utf-8')).get('base_model_name_or_path') != 'uer/gpt2-chinese-cluecorpussmall':
+              raise RuntimeError('Unexpected adapter base model')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              handle.write('RUN12_ADAPTER_DIR=' + str(adapter) + '\n')
+          print('PASS: exact rejected adapter located, no promotion')
+          PY
+      - name: Install pinned tokenizer-only dependency
+        run: python -m pip install --no-cache-dir 'transformers==4.46.3'
+      - name: Verify offline unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Compare four real tokenized fixed prompts on CPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tokenized-suffix"
+          python tools/run12_tokenized_suffix_audit.py \
+            --adapter "$RUN12_ADAPTER_DIR" \
+            --eval-data data/safety_humanity_eval_v1.jsonl \
+            --output "$RUNNER_TEMP/tokenized-suffix/audit.json"
+      - name: Validate private-data and training safety contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'tokenized-suffix/audit.json'
+          data = json.loads(path.read_text(encoding='utf-8'))
+          assert data['count'] == 4
+          assert data['holdout_sha256'] == '5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f'
+          assert data['model_forward_passes'] == 0
+          assert not data['new_gpu_training'] and not data['promotion_approved']
+          assert data['identical_tokenizations'] + data['different_tokenizations'] == 4
+          for row in data['results']:
+              assert 'input_ids' not in row and 'prompt' not in row and 'token_ids' not in row
+              assert row['control_token_count'] > 0 and row['newline_token_count'] > 0
+          print('PASS: four pinned tokenizer comparisons, no raw prompts/IDs, no training')
+          PY
+      - name: Upload bounded tokenization audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run12-tokenized-suffix-${{ github.run_id }}
+          path: ${{ runner.temp }}/tokenized-suffix/
+          if-no-files-found: warn
+          retention-days: 30
