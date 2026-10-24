@@ -19,6 +19,8 @@ concurrency:
 jobs:
   review:
     runs-on: ubuntu-latest
+    env:
+      CUDA_VISIBLE_DEVICES: ""
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +62,7 @@ jobs:
           python -m pip install --no-cache-dir 'transformers==4.46.3' 'peft==0.13.2' 'accelerate==1.1.1'
       - name: Run offline unit tests
         run: python -m unittest discover -s tests -v
-      - name: Execute eight bounded CPU generations with blank-output diagnostics
+      - name: Execute eight bounded CPU bigram generations with blank-output diagnostics
         shell: bash
         run: |
           set -euo pipefail
@@ -68,12 +70,30 @@ jobs:
           python tools/run12_readability_review.py \
             --adapter "$CANDIDATE_ADAPTER_DIR" \
             --eval-data data/safety_humanity_eval_v1.jsonl \
-            --output "$RUNNER_TEMP/readability-review/review.json"
+            --output "$RUNNER_TEMP/readability-review/review.json" \
+            --no-repeat-ngram-size 2
+      - name: Validate non-promoting, privacy-filtered experiment
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'readability-review/review.json'
+          result = json.loads(p.read_text(encoding='utf-8'))
+          assert result['device'] == 'cpu' and not result['gpu_training_performed']
+          assert not result['promotion_approved'] and not result['quality_certified']
+          assert result['generations'] == 8 and len(result['results']) == 8
+          assert result['decoding'] == {'max_new_tokens': 64, 'do_sample': False,
+                                        'repetition_penalty': 1.12, 'no_repeat_ngram_size': 2}
+          forbidden = {'token_ids', 'raw_prompt', 'raw_output', 'output'}
+          assert all(not forbidden.intersection(row) for row in result['results'])
+          print('PASS: pinned 64-token CPU bigram review; no training or promotion')
+          PY
       - name: Upload privacy-filtered evidence only
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: run12-readability-review-${{ github.run_id }}
+          name: run12-readability-bigram-${{ github.run_id }}
           path: ${{ runner.temp }}/readability-review/
           if-no-files-found: warn
           retention-days: 30
