@@ -29,6 +29,45 @@ def safe_excerpt(text, limit=160):
     return clean[:limit] + ("…" if len(clean) > limit else "")
 
 
+
+def diagnose_decode_visibility(token_ids, tokenizer):
+    """Classify a blank generation without exporting raw tokens or unredacted text.
+
+    A nonempty token sequence can decode to empty text because it consists of
+    special tokens, or to whitespace that is removed by .strip().  The two
+    cases need different follow-up tests and must not be conflated.
+    """
+    ids = [int(value) for value in token_ids]
+    special_ids = set(getattr(tokenizer, "all_special_ids", []) or [])
+    eos_id = getattr(tokenizer, "eos_token_id", None)
+    pad_id = getattr(tokenizer, "pad_token_id", None)
+    unfiltered = tokenizer.decode(ids, skip_special_tokens=False)
+    filtered = tokenizer.decode(ids, skip_special_tokens=True)
+    stripped = filtered.strip()
+    if stripped:
+        category = "visible_text"
+    elif filtered:
+        category = "whitespace_only" if filtered.isspace() else "stripped_invisible"
+    elif ids and all(value in special_ids for value in ids):
+        category = "special_tokens_only"
+    elif ids:
+        category = "decoder_filtered_all"
+    else:
+        category = "no_generated_tokens"
+    return {
+        "category": category,
+        "token_count": len(ids),
+        "special_token_count": sum(value in special_ids for value in ids),
+        "eos_token_count": sum(value == eos_id for value in ids) if eos_id is not None else 0,
+        "pad_token_count": sum(value == pad_id for value in ids) if pad_id is not None else 0,
+        "unfiltered_decode_length": len(unfiltered),
+        "filtered_decode_length": len(filtered),
+        "stripped_decode_length": len(stripped),
+        "filtered_whitespace_count": sum(char.isspace() for char in filtered),
+        "filtered_nonprintable_count": sum(not char.isprintable() for char in filtered),
+    }
+
+
 def summarize(rows):
     expected = {(phase, i) for phase in ("base", "candidate") for i in range(4)}
     keys = [(r["phase"], r["prompt_index"]) for r in rows]
@@ -91,6 +130,7 @@ def main():
                 "phase": phase, "prompt_index": index,
                 "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
                 "safe_output_excerpt": safe_excerpt(output),
+                "decode_visibility": diagnose_decode_visibility(ids, tokenizer),
                 **diagnostics,
             })
 
