@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - "scripts/**"
+      - "!scripts/finalize_report.py" # report-only changes must not submit a Kaggle kernel
       - "kaggle/**"
       - "data/**"
       - "requirements-kaggle.txt"
