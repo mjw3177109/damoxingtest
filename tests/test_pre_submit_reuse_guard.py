@@ -5,8 +5,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+import pre_submit_reuse_guard as guard
 from pre_submit_reuse_guard import has_completed_same_data_run, materialize_skip
 
 
@@ -130,6 +132,32 @@ class SameDataRetrainApprovalTests(unittest.TestCase):
     def test_failed_historical_run_is_not_completed_training_evidence(self):
         self.status({"status": "failed"})
         self.assertFalse(self.matched())
+
+    def test_cli_blocks_without_dispatch_approval(self):
+        run_dir = self.root / "reports/2026-10-25/run-456"
+        github_output = self.root / "github-output.txt"
+        argv = ["guard", "--run-dir", str(run_dir), "--github-output", str(github_output)]
+        with patch.object(sys, "argv", argv), \
+             patch.object(guard, "find_reusable_run", return_value=None), \
+             patch.object(guard, "has_completed_same_data_run", return_value=True):
+            guard.main()
+        self.assertEqual((run_dir / "status.txt").read_text().strip(),
+                         "BLOCKED_SAME_DATA_RETRAIN_REQUIRES_APPROVAL")
+        self.assertIn("blocked=true", github_output.read_text())
+        self.assertIn("reuse=false", github_output.read_text())
+        self.assertFalse((run_dir / "kaggle_output").exists())
+
+    def test_cli_explicit_approval_allows_guarded_path(self):
+        run_dir = self.root / "reports/2026-10-25/run-456"
+        github_output = self.root / "github-output.txt"
+        argv = ["guard", "--run-dir", str(run_dir), "--github-output",
+                str(github_output), "--approve-same-data-retrain"]
+        with patch.object(sys, "argv", argv), \
+             patch.object(guard, "find_reusable_run", return_value=None):
+            guard.main()
+        self.assertIn("blocked=false", github_output.read_text())
+        self.assertIn("reuse=false", github_output.read_text())
+        self.assertFalse((run_dir / "status.txt").exists())
 
     def test_workflow_guards_every_kaggle_submit_step(self):
         workflow = (Path(__file__).resolve().parents[1] /
