@@ -10,7 +10,7 @@
 - 不修改训练脚本、训练/验证数据、质量门槛、生产模型权重或安全保护；PR #66 已合并；本轮没有触发 GPU 训练，且不修改生产训练代码。
 
 ## Actions / Kaggle / 实际训练
-- 查询时 Actions 总数 85；本轮最新 [Static Preflight Run 40174843378](https://github.com/mjw3177109/damoxingtest/actions/runs/40174843378) 为 completed/success，160/160 测试通过；上一轮 Run 40168017207 为 153/153。新 CI 为合并前证据，合并后未发现独立的新 CI Run。
+- 最终查询时 Actions 总数 88；最新 [Static Preflight Run 40174942482](https://github.com/mjw3177109/damoxingtest/actions/runs/40174942482) 为 completed/success，真实 Job 121113486122 日志确认 160/160 测试通过、Ruff F821 和 response-only masking 通过；先前 Run 40174843378 同样 160/160 通过。均为 PR 分支 CI，合并后 main 未发现独立新 CI Run。
 - 最新 [Daily Run 40165941479](https://github.com/mjw3177109/damoxingtest/actions/runs/40165941479) completed/success，但 `training_status.json` 明确 `skipped_no_changes=true`、`kaggle_kernel_submitted=false`；`training.log` 明确 `PRE_SUBMIT_SKIPPED_NO_CHANGES`。本小时没有 Kaggle 提交、训练、评估或新生成。
 - Kaggle Kernel `mjw3177109/damoxingtest-gpt-2-daily-training` 的实时状态、版本与剩余配额本轮无法独立核实；历史 Version 8 COMPLETE 不代表当前训练成功。
 - 最近真实 GPU 训练为 [Run 39921870784](https://github.com/mjw3177109/damoxingtest/actions/runs/39921870784)，历史 Tesla T4 / 14.56 GiB，3 epochs、33 步，Train Loss 3.246455、Val Loss 3.147277、PPL 23.272599；同轮基线 Val Loss 3.389291，下降 7.141%。这些是历史值，本轮 GPU 步数 0，Loss/PPL 未新增。
