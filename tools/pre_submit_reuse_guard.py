@@ -120,9 +120,11 @@ def main():
     parser.add_argument("--approve-same-data-retrain", action="store_true",
                         help="Explicit workflow_dispatch approval after reviewing changed recipe")
     args = parser.parse_args()
-    candidate = find_reusable_run(SimpleNamespace(
-        data=args.data, eval_data=args.eval_data, force_retrain=False
-    ))
+    # An explicit manual retrain approval must not silently reuse an exact
+    # historical match. The workflow still performs its remote Kaggle checks.
+    candidate = None if args.approve_same_data_retrain else find_reusable_run(
+        SimpleNamespace(data=args.data, eval_data=args.eval_data, force_retrain=False)
+    )
     reuse = candidate is not None
     blocked = (not reuse and not args.approve_same_data_retrain
                and has_completed_same_data_run(args.data, args.eval_data))
