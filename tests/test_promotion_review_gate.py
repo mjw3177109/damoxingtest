@@ -26,12 +26,19 @@ def gate_script():
 
 
 class PromotionReviewGateTests(unittest.TestCase):
-    def run_gate(self, *, skipped=False, valid_samples=True):
+    def run_gate(self, *, skipped=False, valid_samples=True, existing_approved=False):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             run_dir = root / "reports" / "synthetic"
             output = run_dir / "kaggle_output"
             output.mkdir(parents=True)
+            # Protect an existing approved checkpoint during every gate outcome.
+            approved_dir = root / "checkpoints" / "adapter_latest"
+            approved_version = root / "checkpoints" / "adapter_version.json"
+            if existing_approved:
+                approved_dir.mkdir(parents=True)
+                (approved_dir / "adapter_model.safetensors").write_bytes(b"approved-model-v1")
+                approved_version.write_text('{"version":"approved-v1"}', encoding="utf-8")
             (output / "training_status.json").write_text(
                 json.dumps({"status": "completed", "skipped_no_changes": skipped}),
                 encoding="utf-8",
@@ -57,8 +64,18 @@ class PromotionReviewGateTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             gate = json.loads((run_dir / "quality_gate.json").read_text(encoding="utf-8"))
-            self.assertFalse((root / "checkpoints" / "adapter_latest").exists())
-            self.assertFalse((root / "checkpoints" / "adapter_version.json").exists())
+            if existing_approved:
+                self.assertEqual(
+                    (approved_dir / "adapter_model.safetensors").read_bytes(),
+                    b"approved-model-v1",
+                )
+                self.assertEqual(
+                    approved_version.read_text(encoding="utf-8"),
+                    '{"version":"approved-v1"}',
+                )
+            else:
+                self.assertFalse(approved_dir.exists())
+                self.assertFalse(approved_version.exists())
             return gate
 
     def test_valid_heuristic_still_requires_review(self):
@@ -67,6 +84,16 @@ class PromotionReviewGateTests(unittest.TestCase):
         self.assertEqual(gate["human_review_status"], "pending")
         self.assertFalse(gate["promotion_approved"])
         self.assertTrue(any("review" in reason.lower() for reason in gate["reasons"]))
+
+    def test_existing_approved_checkpoint_survives_good_precheck(self):
+        gate = self.run_gate(existing_approved=True)
+        self.assertTrue(gate["automated_precheck_passed"])
+        self.assertFalse(gate["promotion_approved"])
+
+    def test_existing_approved_checkpoint_survives_bad_generation(self):
+        gate = self.run_gate(existing_approved=True, valid_samples=False)
+        self.assertFalse(gate["automated_precheck_passed"])
+        self.assertFalse(gate["promotion_approved"])
 
     def test_bad_generation_never_promotes(self):
         gate = self.run_gate(valid_samples=False)
