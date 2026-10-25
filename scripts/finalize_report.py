@@ -148,7 +148,10 @@ def main():
         report.append("")
         report.append("## 整体评价")
         report.append("")
-        report.append("本次运行没有足够的实测指标支持模型质量结论。请先解决凭据、GPU、配额、网络或训练脚本问题，再重新运行。")
+        if final_status == "BLOCKED_SAME_DATA_RETRAIN_REQUIRES_APPROVAL":
+            report.append("本次由同数据重训审批保护主动阻断，没有新训练指标；不能将其误判为凭据、GPU 或网络故障。")
+        else:
+            report.append("本次运行没有足够的实测指标支持模型质量结论。请先解决凭据、GPU、配额、网络或训练脚本问题，再重新运行。")
 
     report.append("")
     report.append("## 候选模型晋级门槛")
