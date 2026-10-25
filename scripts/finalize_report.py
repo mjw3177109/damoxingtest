@@ -95,6 +95,9 @@ def main():
         report.append("- 模型与完整输出 Artifact： https://github.com/" + repository + "/actions/runs/" + run_id + "/artifacts")
     report.append("- Kaggle 任务状态： " + status)
     report.append("- 最终判定： **" + final_status + "**")
+    if final_status == "BLOCKED_SAME_DATA_RETRAIN_REQUIRES_APPROVAL":
+        report.append("- 本次训练动作：安全阻断；未提交 Kaggle Kernel，未执行 GPU 训练或评估。")
+        report.append("- 阻断原因：相同训练和验证数据存在历史完成记录，但当前配方或配置不满足精确复用条件。")
     if training_status.get("skipped_no_changes"):
         report.append("- 本次训练动作：跳过重复训练；复用已有指标与样例，未进行新的 GPU 参数更新。")
         report.append("- 复用来源： " + str(training_status.get("reused_from_run", "历史成功运行")))
@@ -190,6 +193,10 @@ def main():
     report.append("")
     if final_status == "SKIPPED_NO_CHANGES":
         report.append("本次训练集、评估集和训练方案与最近一次完整运行一致，因此跳过重复 GPU 训练。新增数据或训练方案发生变化后再启动新训练。")
+    elif final_status == "BLOCKED_SAME_DATA_RETRAIN_REQUIRES_APPROVAL":
+        report.append("1. 核对历史 Run 的数据哈希、训练配置、代码 SHA 与模型质量，不要将配方哈希变化直接视为必须重训。")
+        report.append("2. 确需同数据重训时，仅通过 workflow_dispatch 的 approve_same_data_retrain 明确审批；默认保持阻断。")
+        report.append("3. 审批后仍须检查 Kaggle Kernel 状态、并发和 GPU 配额，不能把审批或 Actions success 当作训练成功。")
     elif final_status == "SUCCESS":
         report.append("1. 人工复核 samples.json，检查事实性、隐私、伤害风险、偏见和是否遵循指令。")
         report.append("2. 比较验证集指标与上一版本，不因单次 loss 变化就直接宣称模型进步。")
