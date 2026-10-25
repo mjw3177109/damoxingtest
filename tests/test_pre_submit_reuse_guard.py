@@ -185,6 +185,20 @@ class SameDataRetrainApprovalTests(unittest.TestCase):
             "steps.reuse_guard.outputs.blocked != 'true'"), 4)
         self.assertIn("--approve-same-data-retrain", workflow)
 
+    def test_failed_kernel_auto_retry_is_dispatch_only(self):
+        """Scheduled/push runs must not automatically retry terminal Kaggle failures."""
+        workflow = (Path(__file__).resolve().parents[1] /
+                    ".github/workflows/daily-gpt2-training.yml").read_text(encoding="utf-8")
+        self.assertIn("approve_failed_kernel_retry:", workflow)
+        self.assertIn(
+            "github.event_name == 'workflow_dispatch' && inputs.approve_failed_kernel_retry || false",
+            workflow,
+        )
+        self.assertIn('if [[ "$APPROVE_FAILED_KERNEL_RETRY" == "true" ]]', workflow)
+        self.assertIn('echo "BLOCKED_FAILED_KERNEL_REQUIRES_APPROVAL" > "$RUN_DIR/status.txt"', workflow)
+        self.assertIn("automatic retry refused pending review", workflow)
+        self.assertNotIn("Existing kernel has a terminal failure; submitting a fresh attempt.", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
