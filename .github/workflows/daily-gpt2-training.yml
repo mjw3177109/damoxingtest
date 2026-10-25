@@ -10,6 +10,11 @@ on:
         type: boolean
         required: false
         default: false
+      approve_failed_kernel_retry:
+        description: "Allow one reviewed retry if the existing Kaggle kernel is in a terminal failed state"
+        type: boolean
+        required: false
+        default: false
   push:
     branches:
       - main
@@ -146,6 +151,7 @@ jobs:
       - name: Launch, monitor, and download
         if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.blocked != 'true'
         env:
+          APPROVE_FAILED_KERNEL_RETRY: ${{ github.event_name == 'workflow_dispatch' && inputs.approve_failed_kernel_retry || false }}
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.shipin }}
@@ -172,8 +178,14 @@ jobs:
               FINAL="RUNNING"
               echo "Existing kernel is active; monitoring it without duplicate submission."
             elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
-              NEED_PUSH="true"
-              echo "Existing kernel has a terminal failure; submitting a fresh attempt."
+              if [[ "$APPROVE_FAILED_KERNEL_RETRY" == "true" ]]; then
+                NEED_PUSH="true"
+                echo "Explicit dispatch approval received for one reviewed retry of a failed kernel."
+              else
+                echo "BLOCKED_FAILED_KERNEL_REQUIRES_APPROVAL" > "$RUN_DIR/status.txt"
+                echo "Existing kernel failed; automatic retry refused pending review and manual approval."
+                exit 0
+              fi
             else
               echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
               echo "Status response was not a recognized Kaggle kernel state; refusing duplicate submission."
