@@ -1,4 +1,5 @@
 """Offline contract tests for the no-GPU, pre-submit reuse path."""
+import hashlib
 import json
 import sys
 import tempfile
@@ -6,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from pre_submit_reuse_guard import materialize_skip
+from pre_submit_reuse_guard import has_completed_same_data_run, materialize_skip
 
 
 class PreSubmitReuseTests(unittest.TestCase):
@@ -81,6 +82,63 @@ class PreSubmitReuseTests(unittest.TestCase):
         self.put("samples.json", [{"output": "..."}])
         with self.assertRaises(ValueError):
             materialize_skip(self.source, self.run, repo_root=self.root)
+
+
+class SameDataRetrainApprovalTests(unittest.TestCase):
+    """No-GPU fixtures for the guard that protects recipe-only changes."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.data = self.root / "data/train.jsonl"
+        self.holdout = self.root / "data/eval.jsonl"
+        self.data.parent.mkdir(parents=True)
+        self.data.write_text('{"instruction":"A","response":"B"}\n', encoding="utf-8")
+        self.holdout.write_text('{"instruction":"C","response":"D"}\n', encoding="utf-8")
+        self.source = self.root / "reports/2026-10-23/run-123"
+        self.source.mkdir(parents=True)
+        (self.source / "run_metadata.json").write_text(json.dumps({
+            "training_data_sha256": hashlib.sha256(self.data.read_bytes()).hexdigest(),
+            "eval_data_sha256": hashlib.sha256(self.holdout.read_bytes()).hexdigest(),
+            "training_recipe_sha256": "historical-recipe-sha",
+        }), encoding="utf-8")
+        self.status({"status": "completed"})
+
+    def status(self, payload):
+        (self.source / "training_status.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+
+    def matched(self):
+        return has_completed_same_data_run(
+            "data/train.jsonl", "data/eval.jsonl", repo_root=self.root
+        )
+
+    def test_completed_same_data_requires_approval_when_exact_reuse_fails(self):
+        self.assertTrue(self.matched())
+
+    def test_changed_data_does_not_trigger_same_data_block(self):
+        self.holdout.write_text('{"instruction":"new","response":"data"}\n',
+                                encoding="utf-8")
+        self.assertFalse(self.matched())
+
+    def test_skipped_historical_run_is_not_completed_training_evidence(self):
+        self.status({"status": "completed", "skipped_no_changes": True})
+        self.assertFalse(self.matched())
+
+    def test_failed_historical_run_is_not_completed_training_evidence(self):
+        self.status({"status": "failed"})
+        self.assertFalse(self.matched())
+
+    def test_workflow_guards_every_kaggle_submit_step(self):
+        workflow = (Path(__file__).resolve().parents[1] /
+                    ".github/workflows/daily-gpt2-training.yml").read_text(encoding="utf-8")
+        self.assertIn("approve_same_data_retrain:", workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertEqual(workflow.count(
+            "steps.reuse_guard.outputs.blocked != 'true'"), 4)
+        self.assertIn("--approve-same-data-retrain", workflow)
 
 
 if __name__ == "__main__":
