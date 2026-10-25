@@ -66,7 +66,7 @@ class BlockedRetrainReportTests(unittest.TestCase):
             run_dir = Path(temporary) / "reports" / "2026-10-26" / "run-existing-active"
             run_dir.mkdir(parents=True)
             (run_dir / "status.txt").write_text(
-                "BLOCKED_EXISTING_KERNEL_ACTIVE\\n", encoding="utf-8"
+                "BLOCKED_EXISTING_KERNEL_ACTIVE\n", encoding="utf-8"
             )
             with patch.object(sys, "argv", [
                 "finalize_report.py", "--run-dir", str(run_dir)
