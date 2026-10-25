@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 1 * * *" # 09:00 Asia/Shanghai
   workflow_dispatch:
+    inputs:
+      approve_same_data_retrain:
+        description: "Approve one same-data retrain after recipe/config review; remote Kaggle safety checks remain active"
+        type: boolean
+        required: false
+        default: false
   push:
     branches:
       - main
@@ -96,25 +102,31 @@ jobs:
       - name: Skip unchanged training before Kaggle submission
         id: reuse_guard
         if: steps.preflight.outputs.kaggle_ready == 'true'
+        env:
+          APPROVE_SAME_DATA_RETRAIN: ${{ github.event_name == 'workflow_dispatch' && inputs.approve_same_data_retrain || false }}
         shell: bash
         run: |
           set -euo pipefail
+          EXTRA_ARGS=()
+          if [[ "$APPROVE_SAME_DATA_RETRAIN" == "true" ]]; then
+            EXTRA_ARGS+=(--approve-same-data-retrain)
+          fi
           python tools/pre_submit_reuse_guard.py \
             --run-dir "$RUN_DIR" \
-            --github-output "$GITHUB_OUTPUT"
+            --github-output "$GITHUB_OUTPUT" "${EXTRA_ARGS[@]}"
 
       - name: Install Kaggle CLI
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.blocked != 'true'
         run: python -m pip install --upgrade kaggle
 
       - name: Prepare kernel metadata
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.blocked != 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
         run: python scripts/prepare_kaggle_kernel.py --username "$KAGGLE_USERNAME" --slug "$KAGGLE_KERNEL_SLUG"
 
       - name: Validate Kaggle title and kernel ID
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.blocked != 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
         shell: bash
@@ -132,7 +144,7 @@ jobs:
           PY
 
       - name: Launch, monitor, and download
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.blocked != 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
