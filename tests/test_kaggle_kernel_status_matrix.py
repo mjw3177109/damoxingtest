@@ -49,6 +49,9 @@ if command == "status":
     elif scenario == "unauthorized":
         print("403 Unauthorized")
         sys.exit(1)
+    elif scenario == "unauthorized_missing":
+        print("403 Unauthorized: Kernel not found")
+        sys.exit(1)
     else:
         print("Unrecognized remote state")
 elif command == "push":
@@ -113,6 +116,13 @@ class KaggleKernelStatusMatrixTests(unittest.TestCase):
                 code, status, pushed, downloaded, _ = self.simulate(state)
                 self.assertEqual((code, status, pushed, downloaded),
                                  (0, "KAGGLE_STATUS_FAILED", False, False))
+
+    def test_auth_denial_with_not_found_text_never_pushes(self):
+        # A 403 response may mention 'not found' to conceal private kernels.
+        # Authentication failures must never be interpreted as a missing kernel.
+        code, status, pushed, downloaded, _ = self.simulate("unauthorized_missing")
+        self.assertEqual((code, status, pushed, downloaded),
+                         (0, "KAGGLE_STATUS_FAILED", False, False))
 
     def test_complete_or_missing_enters_upstream_approved_path(self):
         # Upstream same-data guard is tested separately; this is only the
