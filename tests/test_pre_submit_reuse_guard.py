@@ -159,6 +159,23 @@ class SameDataRetrainApprovalTests(unittest.TestCase):
         self.assertIn("reuse=false", github_output.read_text())
         self.assertFalse((run_dir / "status.txt").exists())
 
+    def test_cli_explicit_approval_bypasses_even_exact_reuse(self):
+        """Approved manual retrain must not silently materialize old metrics."""
+        run_dir = self.root / "reports/2026-10-25/run-approved"
+        github_output = self.root / "approved-output.txt"
+        argv = ["guard", "--run-dir", str(run_dir), "--github-output",
+                str(github_output), "--approve-same-data-retrain"]
+        with patch.object(sys, "argv", argv), \
+             patch.object(guard, "find_reusable_run") as exact_reuse, \
+             patch.object(guard, "materialize_skip") as skip:
+            guard.main()
+        exact_reuse.assert_not_called()
+        skip.assert_not_called()
+        self.assertIn("blocked=false", github_output.read_text())
+        self.assertIn("reuse=false", github_output.read_text())
+        self.assertFalse((run_dir / "status.txt").exists())
+        self.assertFalse((run_dir / "kaggle_output").exists())
+
     def test_workflow_guards_every_kaggle_submit_step(self):
         workflow = (Path(__file__).resolve().parents[1] /
                     ".github/workflows/daily-gpt2-training.yml").read_text(encoding="utf-8")
