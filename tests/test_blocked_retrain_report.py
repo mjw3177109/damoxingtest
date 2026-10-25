@@ -37,6 +37,29 @@ class BlockedRetrainReportTests(unittest.TestCase):
             self.assertFalse((run_dir / "metrics.json").exists())
             self.assertFalse((run_dir / "samples.json").exists())
 
+    def test_failed_kernel_requires_review_not_automatic_retry(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary) / "reports" / "2026-10-26" / "run-failed-kernel"
+            run_dir.mkdir(parents=True)
+            (run_dir / "status.txt").write_text(
+                "BLOCKED_FAILED_KERNEL_REQUIRES_APPROVAL\\n", encoding="utf-8"
+            )
+            with patch.object(sys, "argv", [
+                "finalize_report.py", "--run-dir", str(run_dir)
+            ]):
+                finalize_report.main()
+            self.assertEqual(
+                (run_dir / "final_status.txt").read_text(encoding="utf-8").strip(),
+                "BLOCKED_FAILED_KERNEL_REQUIRES_APPROVAL",
+            )
+            report = (run_dir / "report.md").read_text(encoding="utf-8")
+            self.assertIn("未提交新的 Kaggle Kernel", report)
+            self.assertIn("未执行新的 GPU 训练或评估", report)
+            self.assertIn("approve_failed_kernel_retry", report)
+            self.assertIn("先核实远端失败 Kernel 的实际日志", report)
+            self.assertNotIn("请先解决凭据、GPU", report)
+            self.assertFalse((run_dir / "metrics.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
