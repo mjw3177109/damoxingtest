@@ -115,6 +115,13 @@ def find_reusable_run(args):
     return None
 
 
+def prepare_generation_inputs(tokenizer, prompt, device):
+    """Mirror Trainer input fields at inference: no token_type_ids for GPT-2."""
+    inputs = tokenizer(prompt, return_tensors="pt")
+    inputs.pop("token_type_ids", None)
+    return inputs.to(device)
+
+
 def safe_ppl(loss):
     if loss is None or not math.isfinite(float(loss)):
         return None
@@ -428,7 +435,7 @@ def run(args):
     samples = []
     device = next(trainer.model.parameters()).device
     for prompt in prompts:
-        inputs = tokenizer(prompt, return_tensors="pt").to(device)
+        inputs = prepare_generation_inputs(tokenizer, prompt, device)
         with torch.no_grad():
             generated = trainer.model.generate(
                 **inputs,
