@@ -14,6 +14,9 @@ from pathlib import Path, PurePosixPath
 
 MAX_CONFIG_BYTES = 256 * 1024
 MAX_SAFETENSORS_HEADER_BYTES = 8 * 1024 * 1024
+MAX_ARCHIVE_MEMBERS = 512
+MAX_ARCHIVE_MEMBER_BYTES = 128 * 1024 * 1024
+MAX_ARCHIVE_UNCOMPRESSED_BYTES = 256 * 1024 * 1024
 DTYPE_BYTES = {"BOOL": 1, "U8": 1, "I8": 1, "F8_E4M3": 1, "F8_E5M2": 1,
                "I16": 2, "U16": 2, "F16": 2, "BF16": 2, "I32": 4,
                "U32": 4, "F32": 4, "I64": 8, "U64": 8, "F64": 8}
@@ -105,7 +108,18 @@ def check_safetensors_header(zf: zipfile.ZipFile, path: str) -> int:
 def audit_artifact(archive: Path, run_id: str, expected_base_model: str | None = None) -> dict:
     """Verify ZIP integrity and candidate metadata; never approve a model."""
     with zipfile.ZipFile(archive) as zf:
-        members = zf.namelist()
+        # Reject oversized or excessively fragmented ZIPs before testzip() decompresses data.
+        infos = zf.infolist()
+        if len(infos) > MAX_ARCHIVE_MEMBERS:
+            raise ValueError("ZIP member count exceeds safety limit")
+        total_uncompressed = 0
+        for info in infos:
+            if info.file_size > MAX_ARCHIVE_MEMBER_BYTES:
+                raise ValueError("ZIP member exceeds uncompressed size limit")
+            total_uncompressed += info.file_size
+            if total_uncompressed > MAX_ARCHIVE_UNCOMPRESSED_BYTES:
+                raise ValueError("ZIP total uncompressed size exceeds safety limit")
+        members = [info.filename for info in infos]
         if len(members) != len(set(members)):
             raise ValueError("duplicate ZIP member paths")
         for name in members:
