@@ -1,5 +1,7 @@
 """Offline, read-only ZIP artifact checks. No model load, GPU or credentials."""
 import importlib.util
+import json
+import struct
 import tempfile
 import unittest
 import zipfile
@@ -9,6 +11,11 @@ TOOL = Path(__file__).resolve().parents[1] / "tools" / "audit_adapter_artifact.p
 spec = importlib.util.spec_from_file_location("audit_adapter_artifact", TOOL)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+
+
+def fake_safetensors():
+    header = json.dumps({"weight": {"dtype": "F32", "shape": [1], "data_offsets": [0, 4]}}).encode()
+    return struct.pack("<Q", len(header)) + header + b"\0" * 4
 
 
 class AdapterArtifactAuditTests(unittest.TestCase):
@@ -22,14 +29,15 @@ class AdapterArtifactAuditTests(unittest.TestCase):
         return path
 
     def test_complete_candidate_is_not_approved(self):
+        weights = fake_safetensors()
         path = self.make_zip([
-            ("run/kaggle_output/training_output/adapter/adapter_model.safetensors", b"test-weights"),
+            ("run/kaggle_output/training_output/adapter/adapter_model.safetensors", weights),
             ("run/kaggle_output/training_output/adapter/adapter_config.json", b"{}"),
         ])
         result = module.audit_artifact(path, "123")
         self.assertTrue(result["candidate_recoverable"])
         self.assertFalse(result["approval_verified"])
-        self.assertEqual(result["adapter_bytes"], len(b"test-weights"))
+        self.assertEqual(result["adapter_bytes"], len(weights))
 
     def test_missing_config_is_not_recoverable(self):
         path = self.make_zip([("run/adapter/adapter_model.safetensors", b"test")])
