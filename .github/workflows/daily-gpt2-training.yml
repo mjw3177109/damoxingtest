@@ -175,8 +175,11 @@ jobs:
               NEED_PUSH="true"
               echo "Existing kernel is complete; submitting a fresh version to train the current repository code."
             elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(RUNNING|QUEUED|PENDING)|Status: (RUNNING|QUEUED|PENDING)'; then
-              FINAL="RUNNING"
-              echo "Existing kernel is active; monitoring it without duplicate submission."
+              # A running kernel may belong to another Actions run or manual submission.
+              # Do not re-label its later outputs as training performed by this run.
+              echo "BLOCKED_EXISTING_KERNEL_ACTIVE" > "$RUN_DIR/status.txt"
+              echo "Existing kernel is active; no new submission and no attribution of its outputs to this run."
+              exit 0
             elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
               if [[ "$APPROVE_FAILED_KERNEL_RETRY" == "true" ]]; then
                 NEED_PUSH="true"
