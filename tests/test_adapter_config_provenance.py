@@ -1,5 +1,7 @@
 """Bounded adapter config provenance checks on synthetic ZIP files only."""
 import importlib.util
+import json
+import struct
 import tempfile
 import unittest
 import zipfile
@@ -11,13 +13,18 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
+def fake_safetensors():
+    header = json.dumps({"weight": {"dtype": "F32", "shape": [1], "data_offsets": [0, 4]}}).encode()
+    return struct.pack("<Q", len(header)) + header + b"\\0" * 4
+
+
 class AdapterConfigProvenanceTests(unittest.TestCase):
     def candidate(self, config):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         archive = Path(temp.name) / "candidate.zip"
         with zipfile.ZipFile(archive, "w") as zf:
-            zf.writestr("run/adapter/adapter_model.safetensors", b"fake-weight")
+            zf.writestr("run/adapter/adapter_model.safetensors", fake_safetensors())
             zf.writestr("run/adapter/adapter_config.json", config)
         return archive
 
