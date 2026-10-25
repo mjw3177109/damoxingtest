@@ -228,7 +228,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, math, re, shutil, os
+          import json, math, re, os
           from datetime import datetime, timezone
           from pathlib import Path
           run_dir = Path(os.environ["RUN_DIR"])
@@ -275,12 +275,20 @@ jobs:
                   meaningful += 1
           if meaningful < max(8, math.ceil(len(outputs) * 0.8)):
               reasons.append(f"generation quality heuristic passed only {meaningful}/{len(outputs)} samples")
+          # The automated checks below are preliminary diagnostics, not a
+          # semantic/safety approval. Never promote a model without a separate,
+          # auditable independent review and an explicit approval mechanism.
+          automated_precheck_passed = not reasons and adapter_dir is not None
+          if automated_precheck_passed:
+              reasons.append("Independent semantic and safety review pending; automatic promotion disabled.")
           gate = {
               "checked_at_utc": datetime.now(timezone.utc).isoformat(),
               "run_id": os.environ.get("GITHUB_RUN_ID"),
               "candidate_status": "skipped_no_changes" if status.get("skipped_no_changes") else status.get("status", "missing"),
               "evidence_reused": bool(status.get("skipped_no_changes")),
-              "promotion_approved": not reasons,
+              "automated_precheck_passed": automated_precheck_passed,
+              "human_review_status": "pending",
+              "promotion_approved": False,
               "reasons": reasons,
               "meaningful_generation_samples": meaningful,
               "generation_sample_count": len(outputs),
@@ -289,30 +297,7 @@ jobs:
               "eval_data_sha256": metrics.get("eval_data_sha256")
           }
           (run_dir / "quality_gate.json").write_text(json.dumps(gate, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-          if not reasons and adapter_dir is not None:
-              target = Path("checkpoints/adapter_latest")
-              if target.exists():
-                  shutil.rmtree(target)
-              target.mkdir(parents=True, exist_ok=True)
-              for source in adapter_dir.iterdir():
-                  if source.is_file():
-                      shutil.copy2(source, target / source.name)
-              file_hashes = {item.name: hashlib.sha256(item.read_bytes()).hexdigest() for item in sorted(target.iterdir()) if item.is_file()}
-              version = {
-                  "approved": True,
-                  "promoted_at_utc": datetime.now(timezone.utc).isoformat(),
-                  "source_run_id": os.environ.get("GITHUB_RUN_ID"),
-                  "model_name": metrics.get("model_name"),
-                  "training_data_sha256": metrics.get("training_data_sha256"),
-                  "eval_data_sha256": metrics.get("eval_data_sha256"),
-                  "metrics": metrics,
-                  "adapter_files_sha256": file_hashes,
-                  "note": "Passed preliminary automated gates only; human review remains required."
-              }
-              Path("checkpoints/adapter_version.json").write_text(json.dumps(version, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-              print("PROMOTION_APPROVED: candidate copied to checkpoints/adapter_latest")
-          else:
-              print("PROMOTION_REJECTED; previous approved adapter remains unchanged:", json.dumps(reasons, ensure_ascii=False))
+          print("PROMOTION_REJECTED; candidate archived for independent review:", json.dumps(reasons, ensure_ascii=False))
           PY
 
       - name: Upload model weights and full outputs
