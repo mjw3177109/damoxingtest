@@ -28,3 +28,11 @@
 5. 经验：**初筛指标和人工审批必须在数据结构与执行路径中明确分离**。记录“待审核”不等于“已批准”，CI success、Kaggle COMPLETE 也不等于模型成功。
 
 本报告只包含公开仓库代码、运行 ID、SHA、合成测试说明及非敏感指标；未写入凭据、Token 或私人信息。
+
+
+## 实际 CI 验收与失败修复记录（同轮增补）
+- 首次 Static Preflight Run `40156500259` 为 **failure**。从 Job 日志定位根因：已有 `tests/test_quality_gate_provenance.py::test_real_valid_candidate_preserves_promotion_path` 仍断言旧行为“启发式初筛通过即自动晋级”，与本次安全门槛变更冲突。新加的 3 项回归测试全部通过，但旧测试失败，不能称为整体通过。
+- 先做最小修复：仅更新这条旧测试为“初筛可通过，但独立审核未完成时不得晋级”，保留其他 provenance 检查；修复提交 SHA `8578117b40926010bcaf2770555bcd8b606d22bb`。
+- 随后 [Static Preflight Run 40156537524](https://github.com/mjw3177109/damoxingtest/actions/runs/40156537524) 为 **completed/success**：真实日志 `Ran 146 tests`、`All checks passed!`、`PASS: response-only collator and -100 masking retained`；Python 编译、Ruff F821 与 response-only 掩码验证均通过。
+- 合成端到端测试确认：10 条“看似有效”输出 + 正向 Loss 改善 + 存在 Adapter 时，`automated_precheck_passed=true`，但 `promotion_approved=false`、`human_review_status=pending`，并且没有写入正式 Adapter。无效输出与复用训练同样拒绝晋级。
+- 结论：**已在 Draft PR 中验证安全门槛修复，但尚未合并生产主分支，也没有启动 Kaggle GPU 或产生新的模型指标**。合并前仍需审阅审批方案。
