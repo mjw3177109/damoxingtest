@@ -52,6 +52,12 @@ if command == "status":
     elif scenario == "unauthorized_missing":
         print("403 Unauthorized: Kernel not found")
         sys.exit(1)
+    elif scenario == "rate_limited_missing":
+        print("429 Too Many Requests: Kernel not found")
+        sys.exit(1)
+    elif scenario == "server_error_missing":
+        print("503 Service Unavailable: Kernel not found")
+        sys.exit(1)
     else:
         print("Unrecognized remote state")
 elif command == "push":
@@ -123,6 +129,15 @@ class KaggleKernelStatusMatrixTests(unittest.TestCase):
         code, status, pushed, downloaded, _ = self.simulate("unauthorized_missing")
         self.assertEqual((code, status, pushed, downloaded),
                          (0, "KAGGLE_STATUS_FAILED", False, False))
+
+    def test_transient_api_errors_with_not_found_text_never_push(self):
+        # A 429/5xx response can contain a misleading resource-not-found phrase.
+        # Only a genuine 404 may enter the first-submission branch.
+        for state in ("rate_limited_missing", "server_error_missing"):
+            with self.subTest(state=state):
+                code, status, pushed, downloaded, _ = self.simulate(state)
+                self.assertEqual((code, status, pushed, downloaded),
+                                 (0, "KAGGLE_STATUS_FAILED", False, False))
 
     def test_complete_or_missing_enters_upstream_approved_path(self):
         # Upstream same-data guard is tested separately; this is only the
