@@ -32,7 +32,7 @@ class BlockedRetrainReportTests(unittest.TestCase):
             self.assertIn("approve_same_data_retrain", report)
             self.assertIn("GPU 配额", report)
             self.assertIn("没有找到有效的 metrics.json", report)
-            self.assertIn("不是凭据", report) if False else self.assertIn("不能将其误判为凭据", report)
+            self.assertIn("不能将其误判为凭据", report)
             self.assertNotIn("请先解决凭据、GPU", report)
             self.assertFalse((run_dir / "metrics.json").exists())
             self.assertFalse((run_dir / "samples.json").exists())
