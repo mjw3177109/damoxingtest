@@ -98,6 +98,9 @@ def main():
     if final_status == "BLOCKED_SAME_DATA_RETRAIN_REQUIRES_APPROVAL":
         report.append("- 本次训练动作：安全阻断；未提交 Kaggle Kernel，未执行 GPU 训练或评估。")
         report.append("- 阻断原因：相同训练和验证数据存在历史完成记录，但当前配方或配置不满足精确复用条件。")
+    elif final_status == "BLOCKED_FAILED_KERNEL_REQUIRES_APPROVAL":
+        report.append("- 本次训练动作：安全阻断；未提交新的 Kaggle Kernel，未执行新的 GPU 训练或评估。")
+        report.append("- 阻断原因：远端已有 Kernel 处于 ERROR、FAILED 或 CANCELLED；为避免无限失败重试，要求先审查真实日志。")
     if training_status.get("skipped_no_changes"):
         report.append("- 本次训练动作：跳过重复训练；复用已有指标与样例，未进行新的 GPU 参数更新。")
         report.append("- 复用来源： " + str(training_status.get("reused_from_run", "历史成功运行")))
@@ -150,6 +153,8 @@ def main():
         report.append("")
         if final_status == "BLOCKED_SAME_DATA_RETRAIN_REQUIRES_APPROVAL":
             report.append("本次由同数据重训审批保护主动阻断，没有新训练指标；不能将其误判为凭据、GPU 或网络故障。")
+        elif final_status == "BLOCKED_FAILED_KERNEL_REQUIRES_APPROVAL":
+            report.append("远端 Kernel 已处于终止失败状态，本次主动阻断自动重试；没有新训练指标，不代表本轮再次训练失败。")
         else:
             report.append("本次运行没有足够的实测指标支持模型质量结论。请先解决凭据、GPU、配额、网络或训练脚本问题，再重新运行。")
 
@@ -200,6 +205,10 @@ def main():
         report.append("1. 核对历史 Run 的数据哈希、训练配置、代码 SHA 与模型质量，不要将配方哈希变化直接视为必须重训。")
         report.append("2. 确需同数据重训时，仅通过 workflow_dispatch 的 approve_same_data_retrain 明确审批；默认保持阻断。")
         report.append("3. 审批后仍须检查 Kaggle Kernel 状态、并发和 GPU 配额，不能把审批或 Actions success 当作训练成功。")
+    elif final_status == "BLOCKED_FAILED_KERNEL_REQUIRES_APPROVAL":
+        report.append("1. 先核实远端失败 Kernel 的实际日志、数据与代码版本、错误根因，并完成最小修复及离线验证。")
+        report.append("2. 确需重试时，仅通过 workflow_dispatch 的 approve_failed_kernel_retry 明确审批一次；如同时涉及同数据重训，亦需 approve_same_data_retrain。")
+        report.append("3. 审批不等于训练成功；继续核查并发、GPU 配额、Artifact、质量门槛及可回滚版本。")
     elif final_status == "SUCCESS":
         report.append("1. 人工复核 samples.json，检查事实性、隐私、伤害风险、偏见和是否遵循指令。")
         report.append("2. 比较验证集指标与上一版本，不因单次 loss 变化就直接宣称模型进步。")
