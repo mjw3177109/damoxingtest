@@ -15,7 +15,7 @@ spec.loader.exec_module(module)
 
 def fake_safetensors():
     header = json.dumps({"weight": {"dtype": "F32", "shape": [1], "data_offsets": [0, 4]}}).encode()
-    return struct.pack("<Q", len(header)) + header + b"\\0" * 4
+    return struct.pack("<Q", len(header)) + header + b"\0" * 4
 
 
 class AdapterConfigProvenanceTests(unittest.TestCase):
