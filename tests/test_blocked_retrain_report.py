@@ -61,5 +61,28 @@ class BlockedRetrainReportTests(unittest.TestCase):
             self.assertFalse((run_dir / "metrics.json").exists())
 
 
+    def test_existing_active_kernel_not_attributed_to_this_run(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = Path(temporary) / "reports" / "2026-10-26" / "run-existing-active"
+            run_dir.mkdir(parents=True)
+            (run_dir / "status.txt").write_text(
+                "BLOCKED_EXISTING_KERNEL_ACTIVE\\n", encoding="utf-8"
+            )
+            with patch.object(sys, "argv", [
+                "finalize_report.py", "--run-dir", str(run_dir)
+            ]):
+                finalize_report.main()
+            self.assertEqual(
+                (run_dir / "final_status.txt").read_text(encoding="utf-8").strip(),
+                "BLOCKED_EXISTING_KERNEL_ACTIVE",
+            )
+            report = (run_dir / "report.md").read_text(encoding="utf-8")
+            self.assertIn("未提交新 Kernel", report)
+            self.assertIn("不能归因或宣称本次训练成功", report)
+            self.assertIn("Kernel ID", report)
+            self.assertFalse((run_dir / "metrics.json").exists())
+            self.assertFalse((run_dir / "samples.json").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
