@@ -194,6 +194,12 @@ jobs:
               echo "Status response was not a recognized Kaggle kernel state; refusing duplicate submission."
               exit 0
             fi
+          elif echo "$EXISTING_STATUS" | grep -Eqi '401|403|unauthorized|forbidden|permission denied'; then
+            # Some authorization errors also contain "not found" to avoid
+            # revealing a private kernel. Never treat them as a safe 404.
+            echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
+            echo "Kaggle authorization was not verified; refusing GPU submission."
+            exit 0
           elif echo "$EXISTING_STATUS" | grep -Eqi '404|Not Found|not found|does not exist|No such kernel'; then
             NEED_PUSH="true"
             echo "No existing kernel found at the canonical ID; creating the first run."
