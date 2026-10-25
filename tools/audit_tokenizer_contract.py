@@ -31,6 +31,7 @@ def audit_records(tokenizer, records, max_length):
     """Mirror train_gpt2_lora.py encode_record exactly, without returning text."""
     if max_length < 1 or tokenizer.eos_token is None or tokenizer.eos_token_id is None:
         raise ValueError("Invalid max_length or missing EOS token")
+    unk_token_id = getattr(tokenizer, "unk_token_id", None)
     rows = []
     for index, item in enumerate(records):
         prefix = "用户：" + item["instruction"] + "\n助手："
@@ -50,6 +51,9 @@ def audit_records(tokenizer, records, max_length):
             "eos_in_supervised": tokenizer.eos_token_id in supervised,
             "eos_at_supervised_end": bool(supervised and supervised[-1] == tokenizer.eos_token_id),
             "zero_supervision": not supervised,
+            "prefix_unk_tokens": sum(t == unk_token_id for t in prefix_ids) if unk_token_id is not None else None,
+            "answer_unk_tokens": sum(t == unk_token_id for t in answer_ids) if unk_token_id is not None else None,
+            "supervised_unk_tokens": sum(t == unk_token_id for t in supervised) if unk_token_id is not None else None,
         })
     return rows
 
@@ -60,6 +64,14 @@ def summarize(rows):
     def bounds(key):
         vals = sorted(x[key] for x in rows)
         return {"min": vals[0], "median": vals[len(vals)//2], "max": vals[-1]}
+    def unk_summary(count_key, length_key):
+        counts = [row[count_key] for row in rows]
+        if any(count is None for count in counts):
+            return {"count": None, "total_tokens": None, "percent": None}
+        count = sum(counts)
+        total = sum(row[length_key] for row in rows)
+        return {"count": count, "total_tokens": total,
+                "percent": round(100 * count / total, 4) if total else None}
     return {
         "records": len(rows),
         "prefix_tokens": bounds("prefix_tokens"),
@@ -68,6 +80,9 @@ def summarize(rows):
         "supervised_tokens": bounds("supervised_tokens"),
         "truncated_records": counts("was_truncated"),
         "zero_supervision_records": counts("zero_supervision"),
+        "unk_prefix": unk_summary("prefix_unk_tokens", "prefix_tokens"),
+        "unk_answer": unk_summary("answer_unk_tokens", "answer_tokens"),
+        "unk_supervised": unk_summary("supervised_unk_tokens", "supervised_tokens"),
         "eos_missing_from_full_answer": len(rows) - counts("eos_in_full"),
         "eos_not_at_full_answer_end": len(rows) - counts("eos_at_full_end"),
         "eos_missing_from_supervision": len(rows) - counts("eos_in_supervised"),
@@ -102,6 +117,7 @@ def main():
         "model_revision": RUN12_REVISION,
         "tokenizer_class": type(tokenizer).__name__,
         "tokenizer_eos_token_id": tokenizer.eos_token_id,
+        "tokenizer_unk_token_id": tokenizer.unk_token_id,
         "tokenizer_sep_token_id": tokenizer.sep_token_id,
         "tokenizer_pad_token_id": tokenizer.pad_token_id,
         "tokenizer_vocab_size": len(tokenizer),
