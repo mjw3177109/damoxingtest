@@ -79,11 +79,16 @@ class QualityGateProvenanceTests(unittest.TestCase):
         self.assertIn("LoRA adapter files missing", gate["reasons"])
         self.assertFalse(promoted)
 
-    def test_real_valid_candidate_preserves_promotion_path(self):
+    def test_real_valid_candidate_requires_independent_review(self):
         gate, promoted = self.evaluate(skipped=False, adapter=True)
-        self.assertTrue(gate["promotion_approved"])
-        self.assertEqual(gate["reasons"], [])
-        self.assertTrue(promoted)
+        self.assertTrue(gate["automated_precheck_passed"])
+        self.assertEqual(gate["human_review_status"], "pending")
+        self.assertFalse(gate["promotion_approved"])
+        self.assertIn(
+            "Independent semantic and safety review pending; automatic promotion disabled.",
+            gate["reasons"],
+        )
+        self.assertFalse(promoted)
 
 
 if __name__ == "__main__":
