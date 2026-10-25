@@ -29,8 +29,9 @@ class AdapterArtifactAuditTests(unittest.TestCase):
         return path
 
     def test_complete_candidate_is_not_approved(self):
+        weights = fake_safetensors()
         path = self.make_zip([
-            ("run/kaggle_output/training_output/adapter/adapter_model.safetensors", b"test-weights"),
+            ("run/kaggle_output/training_output/adapter/adapter_model.safetensors", weights),
             ("run/kaggle_output/training_output/adapter/adapter_config.json", b"{}"),
         ])
         result = module.audit_artifact(path, "123")
