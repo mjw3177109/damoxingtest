@@ -1,5 +1,6 @@
 """Offline tests; do not download weights or allocate GPU."""
 import hashlib
+import json
 import sys
 import tempfile
 import unittest
@@ -7,6 +8,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from run12_temperature_pair_cpu import generation_settings, summarize, verify_adapter
+
+
+RUN12_CONFIG = {
+    "base_model_name_or_path": "uer/gpt2-chinese-cluecorpussmall",
+    "task_type": "CAUSAL_LM",
+    "r": 8,
+    "lora_alpha": 16,
+    "lora_dropout": 0.05,
+    "fan_in_fan_out": True,
+    "target_modules": ["c_attn", "c_proj"],
+}
+
+
+def write_config(folder, config=RUN12_CONFIG):
+    (folder / "adapter_config.json").write_text(json.dumps(config), encoding="utf-8")
 
 
 class FakeTokenizer:
@@ -34,7 +50,7 @@ class TemperaturePairTests(unittest.TestCase):
     def test_adapter_hash_and_config_are_required(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)
-            (folder / "adapter_config.json").write_text("{}", encoding="utf-8")
+            write_config(folder)
             weights = b"test-adapter"
             (folder / "adapter_model.safetensors").write_bytes(weights)
             expected = hashlib.sha256(weights).hexdigest()
@@ -45,10 +61,36 @@ class TemperaturePairTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "adapter_config"):
                 verify_adapter(folder)
 
+    def test_rejects_invalid_adapter_config_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            (folder / "adapter_config.json").write_text("{not-json", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Invalid adapter_config"):
+                verify_adapter(folder)
+
+    def test_rejects_wrong_adapter_recipe_before_weights(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            for change in ({"base_model_name_or_path": "wrong/model"},
+                           {"task_type": "SEQ_CLS"}, {"r": 16},
+                           {"lora_alpha": 32}, {"lora_dropout": 0.1},
+                           {"fan_in_fan_out": False}):
+                write_config(folder, {**RUN12_CONFIG, **change})
+                with self.subTest(change=change), self.assertRaisesRegex(ValueError, "pinned Run 12 recipe"):
+                    verify_adapter(folder)
+
+    def test_rejects_wrong_adapter_target_modules(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            for modules in (["c_attn"], ["c_attn", "c_proj", "lm_head"], "c_attn"):
+                write_config(folder, {**RUN12_CONFIG, "target_modules": modules})
+                with self.subTest(modules=modules), self.assertRaisesRegex(ValueError, "target modules"):
+                    verify_adapter(folder)
+
     def test_missing_adapter_weights_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)
-            (folder / "adapter_config.json").write_text("{}", encoding="utf-8")
+            write_config(folder)
             with self.assertRaisesRegex(ValueError, "safetensors"):
                 verify_adapter(folder)
 
