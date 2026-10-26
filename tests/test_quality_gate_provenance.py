@@ -23,12 +23,15 @@ def gate_code():
 
 
 class QualityGateProvenanceTests(unittest.TestCase):
-    def evaluate(self, skipped, adapter):
+    def evaluate(self, skipped, adapter, workflow_status=None):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             run_dir = root / "run"
             output = run_dir / "kaggle_output" / "training_output"
             output.mkdir(parents=True)
+            if workflow_status != "__MISSING__":
+                current_status = workflow_status or ("PRE_SUBMIT_SKIPPED_NO_CHANGES" if skipped else "COMPLETE")
+                (run_dir / "status.txt").write_text(current_status + "\n", encoding="utf-8")
             (output / "training_status.json").write_text(
                 json.dumps({"status": "completed", "skipped_no_changes": skipped}),
                 encoding="utf-8",
@@ -77,6 +80,25 @@ class QualityGateProvenanceTests(unittest.TestCase):
         self.assertFalse(gate["evidence_reused"])
         self.assertEqual(gate["candidate_status"], "completed")
         self.assertIn("LoRA adapter files missing", gate["reasons"])
+        self.assertFalse(promoted)
+
+    def test_failed_download_with_stale_complete_files_is_not_valid(self):
+        gate, promoted = self.evaluate(skipped=False, adapter=True,
+                                       workflow_status="KAGGLE_OUTPUT_UNAVAILABLE")
+        self.assertFalse(gate["automated_precheck_passed"])
+        self.assertFalse(promoted)
+        self.assertIn("Current GitHub run has no verified COMPLETE Kaggle status", gate["reasons"])
+
+    def test_active_kernel_outputs_cannot_be_claimed(self):
+        gate, promoted = self.evaluate(skipped=False, adapter=True,
+                                       workflow_status="BLOCKED_EXISTING_KERNEL_ACTIVE")
+        self.assertFalse(gate["automated_precheck_passed"])
+        self.assertFalse(promoted)
+
+    def test_missing_run_status_fails_closed(self):
+        gate, promoted = self.evaluate(skipped=False, adapter=True,
+                                       workflow_status="__MISSING__")
+        self.assertFalse(gate["automated_precheck_passed"])
         self.assertFalse(promoted)
 
     def test_real_valid_candidate_requires_independent_review(self):
