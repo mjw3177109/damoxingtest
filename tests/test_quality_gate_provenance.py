@@ -3,6 +3,7 @@
 Extracts the actual quality-gate Python from the workflow; no Kaggle, GPU,
 credentials, model downloads, or repository checkpoint mutations are involved.
 """
+import hashlib
 import json
 import os
 import subprocess
@@ -23,7 +24,8 @@ def gate_code():
 
 
 class QualityGateProvenanceTests(unittest.TestCase):
-    def evaluate(self, skipped, adapter, workflow_status=None):
+    def evaluate(self, skipped, adapter, workflow_status=None, train_sha_override=None,
+                 eval_sha_override=None, recipe_sha_override=None, missing_metadata=False):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             run_dir = root / "run"
@@ -36,12 +38,30 @@ class QualityGateProvenanceTests(unittest.TestCase):
                 json.dumps({"status": "completed", "skipped_no_changes": skipped}),
                 encoding="utf-8",
             )
+            # Mirror the real training fingerprint contract without network/GPU.
+            (root / "data").mkdir()
+            (root / "scripts").mkdir()
+            (root / "kaggle").mkdir()
+            train = root / "data/safety_humanity_train_v2.jsonl"
+            holdout = root / "data/safety_humanity_eval_v1.jsonl"
+            train.write_text('{"instruction":"A","response":"B"}\n', encoding="utf-8")
+            holdout.write_text('{"instruction":"C","response":"D"}\n', encoding="utf-8")
+            recipe = hashlib.sha256()
+            for relative in ("scripts/train_gpt2_lora.py", "kaggle/gpt2_training.ipynb",
+                             "requirements-kaggle.txt"):
+                file = root / relative
+                file.write_text("fixture", encoding="utf-8")
+                recipe.update(relative.encode("utf-8"))
+                recipe.update(file.read_bytes())
+            evidence = {
+                "training_data_sha256": train_sha_override or hashlib.sha256(train.read_bytes()).hexdigest(),
+                "eval_data_sha256": eval_sha_override or hashlib.sha256(holdout.read_bytes()).hexdigest(),
+                "training_recipe_sha256": recipe_sha_override or recipe.hexdigest(),
+            }
+            if not missing_metadata:
+                (output / "run_metadata.json").write_text(json.dumps(evidence), encoding="utf-8")
             (output / "metrics.json").write_text(
-                json.dumps({
-                    "eval_loss_improvement_pct": 7.141,
-                    "training_data_sha256": "test-train-sha",
-                    "eval_data_sha256": "test-eval-sha",
-                }), encoding="utf-8",
+                json.dumps({"eval_loss_improvement_pct": 7.141, **evidence}), encoding="utf-8",
             )
             (output / "samples.json").write_text(
                 json.dumps([{"output": "This is a meaningful example answer."}] * 10),
@@ -100,6 +120,26 @@ class QualityGateProvenanceTests(unittest.TestCase):
                                        workflow_status="__MISSING__")
         self.assertFalse(gate["automated_precheck_passed"])
         self.assertFalse(promoted)
+
+    def test_complete_run_with_wrong_train_sha_is_rejected(self):
+        gate, _ = self.evaluate(False, True, train_sha_override="tampered-train-sha")
+        self.assertFalse(gate["automated_precheck_passed"])
+        self.assertTrue(any("training_data_sha256" in x for x in gate["reasons"]))
+
+    def test_complete_run_with_wrong_eval_sha_is_rejected(self):
+        gate, _ = self.evaluate(False, True, eval_sha_override="tampered-eval-sha")
+        self.assertFalse(gate["automated_precheck_passed"])
+        self.assertTrue(any("eval_data_sha256" in x for x in gate["reasons"]))
+
+    def test_complete_run_with_wrong_recipe_sha_is_rejected(self):
+        gate, _ = self.evaluate(False, True, recipe_sha_override="tampered-recipe-sha")
+        self.assertFalse(gate["automated_precheck_passed"])
+        self.assertTrue(any("training_recipe_sha256" in x for x in gate["reasons"]))
+
+    def test_complete_run_missing_metadata_is_rejected(self):
+        gate, _ = self.evaluate(False, True, missing_metadata=True)
+        self.assertFalse(gate["automated_precheck_passed"])
+        self.assertTrue(any("run_metadata.json" in x for x in gate["reasons"]))
 
     def test_real_valid_candidate_requires_independent_review(self):
         gate, promoted = self.evaluate(skipped=False, adapter=True)
