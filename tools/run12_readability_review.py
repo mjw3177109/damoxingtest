@@ -3,7 +3,6 @@
 import argparse
 import hashlib
 import json
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,21 +12,14 @@ from generation_decode_probe import (
 )
 from run12_token_type_parity import make_inputs
 
-SENSITIVE = re.compile(
-    r"(?i)(?:https?://\S+|www\.\S+|[\w.+-]+@[\w.-]+\.[a-z]{2,}"
-    r"|\b(?:\+?\d[\d\s().-]{9,}\d)\b|\b(?:sk-[\w-]{8,}|(?:gh[pousr]|github_pat)[_-][A-Za-z0-9_-]{8,})\b)"
-)
-
-
 def safe_excerpt(text, limit=160):
-    """Fail closed on possible contact information or credentials."""
+    """Fail closed: generated text may contain PII that regexes cannot detect.
+
+    Shared CI artifacts contain only a fixed marker. Review text locally.
+    """
     if not isinstance(text, str):
         raise TypeError("Generated output must be text")
-    if SENSITIVE.search(text):
-        return "[REDACTED: possible sensitive content]"
-    clean = "".join(ch for ch in text if ch.isprintable()).strip()
-    return clean[:limit] + ("…" if len(clean) > limit else "")
-
+    return "[REDACTED: raw output withheld]"
 
 
 
@@ -111,8 +103,7 @@ def summarize(rows):
     return {phase: {
         "count": 4,
         "punctuation_only": sum(bool(r["punctuation_only"]) for r in rows if r["phase"] == phase),
-        "contains_chinese": sum(bool(re.search(r"[\u3400-\u9fff]", r["safe_output_excerpt"]))
-                                for r in rows if r["phase"] == phase),
+        "contains_chinese": sum(bool(r["contains_chinese"]) for r in rows if r["phase"] == phase),
         "eos": sum(r["stop_reason_inferred"] == "eos" for r in rows if r["phase"] == phase),
         "manual_review_required": True,
     } for phase in ("base", "candidate")}
@@ -177,6 +168,7 @@ def main():
                 "phase": phase, "prompt_index": index,
                 "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
                 "safe_output_excerpt": safe_excerpt(output),
+                "contains_chinese": any("\u3400" <= c <= "\u9fff" for c in output),
                 "decode_visibility": diagnose_decode_visibility(ids, tokenizer),
                 **diagnostics,
             })
