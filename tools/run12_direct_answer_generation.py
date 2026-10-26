@@ -117,7 +117,7 @@ def main():
         for index, control in enumerate(prompts):
             for setting in SETTINGS:
                 prompt = control if setting == "control" else variant_prompt(control)
-                inputs = make_inputs(tokenizer, prompt, "train_parity")
+                inputs = make_inputs(tokenizer, prompt, "train_exact")
                 torch.manual_seed(42 + index)
                 with torch.inference_mode():
                     output = model.generate(
@@ -143,11 +143,11 @@ def main():
         "experiment": "control vs one direct-answer directive; base vs rejected Run 12 LoRA",
         "device": "cpu", "decoding": {"do_sample": False, "max_new_tokens": MAX_NEW_TOKENS,
                                     "repetition_penalty": 1.12, "seed_per_prompt": "42 + index",
-                                    "input_mode": "train_parity_without_token_type_ids"},
+                                    "input_mode": "train_exact_no_auto_special_tokens_or_token_type_ids"},
         "generations": len(rows), "summary": summarize(rows), "results": rows,
         "gpu_training_performed": False, "quality_certified": False,
         "promotion_approved": False,
-        "limitations": "Four prompts, no automatic quality certification. Review excerpts manually; preserve negative results.",
+        "limitations": "Four prompts, no automatic quality certification. Review raw outputs only in a private environment; public excerpts withheld. Preserve negative results.",
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
