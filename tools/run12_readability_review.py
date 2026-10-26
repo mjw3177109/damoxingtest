@@ -152,7 +152,7 @@ def main():
     def evaluate(model, phase):
         model.eval()
         for index, prompt in enumerate(prompts):
-            inputs = make_inputs(tokenizer, prompt, "train_parity")
+            inputs = make_inputs(tokenizer, prompt, "train_exact")
             torch.manual_seed(42 + index)
             with torch.inference_mode():
                 generated = model.generate(
@@ -183,7 +183,7 @@ def main():
         "model_revision": DEFAULT_REVISION,
         "holdout_sha256": eval_sha,
         "device": "cpu",
-        "experiment": "base vs rejected LoRA candidate, same four prompts and train-parity inputs",
+        "experiment": "base vs rejected LoRA candidate, same four prompts and train-exact inputs (no automatic special tokens or token_type_ids)",
         "generations": 8,
         "decoding": decoding_kwargs(args.no_repeat_ngram_size),
         "summary": summary,
@@ -191,7 +191,7 @@ def main():
         "quality_certified": False,
         "promotion_approved": False,
         "gpu_training_performed": False,
-        "note": "Excerpts are privacy-filtered; human evaluation of relevance, accuracy and safety remains required.",
+        "note": "Raw excerpts withheld; private human evaluation of relevance, accuracy and safety remains required.",
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
