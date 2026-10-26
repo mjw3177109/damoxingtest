@@ -32,6 +32,9 @@ class PromotionReviewGateTests(unittest.TestCase):
             run_dir = root / "reports" / "synthetic"
             output = run_dir / "kaggle_output"
             output.mkdir(parents=True)
+            (run_dir / "status.txt").write_text(
+                "PRE_SUBMIT_SKIPPED_NO_CHANGES\n" if skipped else "COMPLETE\n", encoding="utf-8"
+            )
             # Protect an existing approved checkpoint during every gate outcome.
             approved_dir = root / "checkpoints" / "adapter_latest"
             approved_version = root / "checkpoints" / "adapter_version.json"
