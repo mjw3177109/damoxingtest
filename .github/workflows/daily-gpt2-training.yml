@@ -276,6 +276,13 @@ jobs:
           metrics = {}
           samples = []
           status = {}
+          # Files alone cannot establish that THIS Actions run completed Kaggle.
+          # A blocked/failed run may still contain stale or partial outputs.
+          workflow_status_path = run_dir / "status.txt"
+          workflow_status = (workflow_status_path.read_text(encoding="utf-8").strip()
+                             if workflow_status_path.is_file() else "MISSING")
+          if workflow_status != "COMPLETE":
+              reasons.append("Current GitHub run has no verified COMPLETE Kaggle status")
           adapter_dir = None
           if not statuses:
               reasons.append("training_status.json missing from Kaggle output")
