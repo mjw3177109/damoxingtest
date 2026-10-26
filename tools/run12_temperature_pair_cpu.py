@@ -64,6 +64,23 @@ def summarize(rows, temperatures=TEMPERATURES):
         group = [r for r in rows if r["temperature"] == temperature]
         if not group:
             raise ValueError("Missing comparison arm")
+        # A temperature experiment is only comparable when every prompt
+        # appears exactly once in each arm with the same content hash.
+        provenance = {}
+        for row in group:
+            index = row.get("prompt_index")
+            digest = row.get("prompt_sha256")
+            if (not isinstance(index, int) or isinstance(index, bool) or index < 0
+                    or not isinstance(digest, str) or len(digest) != 64
+                    or any(ch not in "0123456789abcdef" for ch in digest)):
+                raise ValueError("Missing or invalid prompt provenance")
+            if index in provenance:
+                raise ValueError("Duplicate prompt index within comparison arm")
+            provenance[index] = digest
+        if temperature == temperatures[0]:
+            reference_provenance = provenance
+        elif provenance != reference_provenance:
+            raise ValueError("Unpaired prompt indices or hashes between arms")
         summary[str(temperature)] = {
             "samples": len(group),
             "punctuation_only_count": sum(bool(r["punctuation_only"]) for r in group),
