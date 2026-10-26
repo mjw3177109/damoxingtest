@@ -25,8 +25,26 @@ TEMPERATURES = (0.8, 0.7)
 def verify_adapter(adapter, expected_sha256=EXPECTED_ADAPTER_SHA256):
     """Fail closed before importing heavyweight inference dependencies."""
     adapter = Path(adapter)
-    if not (adapter / "adapter_config.json").is_file():
+    config_path = adapter / "adapter_config.json"
+    if not config_path.is_file():
         raise ValueError("Missing adapter_config.json")
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Invalid adapter_config.json") from exc
+    expected = {
+        "base_model_name_or_path": DEFAULT_MODEL,
+        "task_type": "CAUSAL_LM",
+        "r": 8,
+        "lora_alpha": 16,
+        "lora_dropout": 0.05,
+        "fan_in_fan_out": True,
+    }
+    if not isinstance(config, dict) or any(config.get(key) != value for key, value in expected.items()):
+        raise ValueError("Adapter configuration differs from the pinned Run 12 recipe")
+    modules = config.get("target_modules")
+    if not isinstance(modules, list) or set(modules) != {"c_attn", "c_proj"}:
+        raise ValueError("Adapter target modules differ from the pinned Run 12 recipe")
     weights = adapter / "adapter_model.safetensors"
     if not weights.is_file():
         raise ValueError("Missing adapter_model.safetensors")
