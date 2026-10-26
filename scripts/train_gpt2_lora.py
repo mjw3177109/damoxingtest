@@ -8,6 +8,7 @@ import math
 import os
 import random
 import shutil
+import subprocess
 import sys
 import time
 import traceback
@@ -66,6 +67,21 @@ def training_recipe_hash():
             digest.update(b"<missing>")
     return digest.hexdigest()
 
+
+def source_git_commit_sha():
+    """Read the exact Git commit from the checkout used for training."""
+    root = Path(__file__).resolve().parent.parent
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--verify", "HEAD"],
+            check=True, capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None
+    commit = result.stdout.strip().lower()
+    if len(commit) != 40 or any(char not in "0123456789abcdef" for char in commit):
+        return None
+    return commit
 
 
 def reusable_training_config_matches(previous, args):
@@ -237,6 +253,7 @@ def run(args):
         "model_name": args.model_name,
         "training_method": "LoRA supervised causal language-model fine-tuning",
         "training_recipe_sha256": training_recipe_hash(),
+        "source_git_commit_sha": source_git_commit_sha(),
         "project_principles": PROJECT_PRINCIPLES,
         "seed": args.seed,
         "max_length": args.max_length,
@@ -485,6 +502,7 @@ def run(args):
         "training_data_sha256": corpus_sha256,
         "eval_data_sha256": eval_sha256,
         "training_recipe_sha256": training_recipe_hash(),
+        "source_git_commit_sha": metadata["source_git_commit_sha"],
         "resolved_model_commit": resolved_model_commit,
         "starting_adapter_loaded": starting_adapter_loaded,
         "starting_adapter_sha256": starting_adapter_sha256,

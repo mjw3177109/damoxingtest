@@ -344,6 +344,14 @@ jobs:
               if (metrics.get("training_recipe_sha256") != expected_recipe
                       or metadata.get("training_recipe_sha256") != expected_recipe):
                   reasons.append("training_recipe_sha256 does not match current checkout")
+              # Kaggle notebook clones main independently. A matching recipe is not
+              # proof it cloned the exact Git commit that triggered this run.
+              expected_git_sha = os.environ.get("GITHUB_SHA", "").strip().lower()
+              if not re.fullmatch(r"[0-9a-f]{40}", expected_git_sha):
+                  reasons.append("Current GitHub SHA missing or invalid; source provenance unverified")
+              elif (metadata.get("source_git_commit_sha") != expected_git_sha
+                    or metrics.get("source_git_commit_sha") != expected_git_sha):
+                  reasons.append("source_git_commit_sha does not match current GitHub run SHA in metrics/metadata")
           improvement = metrics.get("eval_loss_improvement_pct")
           if not isinstance(improvement, (int, float)) or not math.isfinite(float(improvement)) or improvement <= 0:
               reasons.append("fixed-holdout validation loss did not improve")
@@ -376,7 +384,9 @@ jobs:
               "generation_sample_count": len(outputs),
               "eval_loss_improvement_pct": improvement,
               "training_data_sha256": metrics.get("training_data_sha256"),
-              "eval_data_sha256": metrics.get("eval_data_sha256")
+              "eval_data_sha256": metrics.get("eval_data_sha256"),
+              "source_git_commit_sha": metadata.get("source_git_commit_sha"),
+              "expected_github_sha": os.environ.get("GITHUB_SHA")
           }
           (run_dir / "quality_gate.json").write_text(json.dumps(gate, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
           print("PROMOTION_REJECTED; candidate archived for independent review:", json.dumps(reasons, ensure_ascii=False))

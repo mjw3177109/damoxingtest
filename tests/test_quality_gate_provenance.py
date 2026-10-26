@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/daily-gpt2-training.yml"
+GIT_SHA = "0123456789abcdef0123456789abcdef01234567"
 
 
 def gate_code():
@@ -25,7 +26,8 @@ def gate_code():
 
 class QualityGateProvenanceTests(unittest.TestCase):
     def evaluate(self, skipped, adapter, workflow_status=None, train_sha_override=None,
-                 eval_sha_override=None, recipe_sha_override=None, missing_metadata=False):
+                 eval_sha_override=None, recipe_sha_override=None, missing_metadata=False,
+                 source_sha_override=None, missing_source_sha=False, github_sha_override=None):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             run_dir = root / "run"
@@ -58,6 +60,8 @@ class QualityGateProvenanceTests(unittest.TestCase):
                 "eval_data_sha256": eval_sha_override or hashlib.sha256(holdout.read_bytes()).hexdigest(),
                 "training_recipe_sha256": recipe_sha_override or recipe.hexdigest(),
             }
+            if not missing_source_sha:
+                evidence["source_git_commit_sha"] = source_sha_override or GIT_SHA
             if not missing_metadata:
                 (output / "run_metadata.json").write_text(json.dumps(evidence), encoding="utf-8")
             (output / "metrics.json").write_text(
@@ -71,7 +75,8 @@ class QualityGateProvenanceTests(unittest.TestCase):
                 folder = output / "adapter"
                 folder.mkdir()
                 (folder / "adapter_config.json").write_text("{}", encoding="utf-8")
-            env = dict(os.environ, RUN_DIR=str(run_dir), GITHUB_RUN_ID="123456")
+            env = dict(os.environ, RUN_DIR=str(run_dir), GITHUB_RUN_ID="123456",
+                       GITHUB_SHA=GIT_SHA if github_sha_override is None else github_sha_override)
             subprocess.run(
                 [sys.executable, "-c", gate_code()],
                 cwd=root, env=env, check=True, capture_output=True, text=True,
@@ -135,6 +140,21 @@ class QualityGateProvenanceTests(unittest.TestCase):
         gate, _ = self.evaluate(False, True, recipe_sha_override="tampered-recipe-sha")
         self.assertFalse(gate["automated_precheck_passed"])
         self.assertTrue(any("training_recipe_sha256" in x for x in gate["reasons"]))
+
+    def test_complete_run_with_wrong_source_git_sha_is_rejected(self):
+        gate, _ = self.evaluate(False, True, source_sha_override="a" * 40)
+        self.assertFalse(gate["automated_precheck_passed"])
+        self.assertTrue(any("source_git_commit_sha" in x for x in gate["reasons"]))
+
+    def test_complete_run_missing_source_git_sha_is_rejected(self):
+        gate, _ = self.evaluate(False, True, missing_source_sha=True)
+        self.assertFalse(gate["automated_precheck_passed"])
+        self.assertTrue(any("source_git_commit_sha" in x for x in gate["reasons"]))
+
+    def test_complete_run_missing_current_github_sha_is_rejected(self):
+        gate, _ = self.evaluate(False, True, github_sha_override="")
+        self.assertFalse(gate["automated_precheck_passed"])
+        self.assertTrue(any("Current GitHub SHA missing" in x for x in gate["reasons"]))
 
     def test_complete_run_missing_metadata_is_rejected(self):
         gate, _ = self.evaluate(False, True, missing_metadata=True)
