@@ -1,0 +1,100 @@
+name: GPT-2 Run 12 Reference Overlap CPU
+
+# One-shot, branch-scoped CPU-only diagnostic; no automatic retriggers from reports.
+on:
+  push:
+    branches: [fix/reuse-training-config-20261025-22]
+    paths:
+      - ".github/workflows/run12-reference-overlap-cpu.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gpt2-run12-reference-overlap-cpu-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  reference-overlap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate source and run six offline tests
+        run: |
+          python -m py_compile tools/run12_reference_overlap_cpu.py tests/test_run12_reference_overlap_cpu.py
+          python -m unittest discover -s tests -p test_run12_reference_overlap_cpu.py -v
+      - name: Retrieve rejected Run 12 Adapter
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run12-source"
+          gh run download 39921870784 --repo "$GITHUB_REPOSITORY" \
+            --name gpt2-training-39921870784 --dir "$RUNNER_TEMP/run12-source"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "run12-source"
+          matches = [p.parent for p in root.rglob("adapter_config.json")
+                     if "/run-39921870784/kaggle_output/training_output/adapter/" in "/" + p.as_posix()]
+          if len(matches) != 1:
+              raise RuntimeError(f"Expected exactly one Run 12 Adapter, found {len(matches)}")
+          adapter = matches[0]
+          if not (adapter / "adapter_model.safetensors").is_file():
+              raise RuntimeError("Run 12 weights missing")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+              f.write("RUN12_ADAPTER_DIR=" + str(adapter) + "\n")
+          PY
+      - name: Install pinned CPU inference dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --no-cache-dir 'torch==2.5.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-cache-dir 'transformers==4.46.3' 'peft==0.13.2' 'accelerate==1.1.1'
+      - name: Compare base and Run 12 Adapter using corrected prompt encoding
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/reference-overlap"
+          python tools/run12_reference_overlap_cpu.py \
+            --adapter "$RUN12_ADAPTER_DIR" \
+            --eval-data data/safety_humanity_eval_v1.jsonl \
+            --output "$RUNNER_TEMP/reference-overlap/reference_overlap.json"
+      - name: Check provenance, privacy filtering, and promotion lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ["RUNNER_TEMP"]) / "reference-overlap/reference_overlap.json"
+          r = json.loads(p.read_text(encoding="utf-8"))
+          assert r["source_gpu_run_id"] == "39921870784"
+          assert r["adapter_sha256"] == "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c"
+          assert r["holdout_sha256"] == "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f"
+          assert r["device"] == "cpu" and r["decoding"] == "greedy"
+          assert r["promotion_approved"] is False
+          assert len(r["per_prompt_numeric_diagnostics"]) == 20
+          assert all(r["summary"][a]["samples"] == 10 for a in ("base", "run12_candidate"))
+          forbidden = {"prompt", "output", "token_ids", "reference", "text"}
+          assert all(not (forbidden & row.keys()) for row in r["per_prompt_numeric_diagnostics"])
+          print("PASS: 20 CPU generations; no raw text or automatic promotion")
+          PY
+      - name: Upload privacy-filtered numeric evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run12-reference-overlap-${{ github.run_id }}
+          path: ${{ runner.temp }}/reference-overlap/
+          if-no-files-found: warn
+          retention-days: 30
