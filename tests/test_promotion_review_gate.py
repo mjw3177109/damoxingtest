@@ -3,6 +3,7 @@
 Executes the actual quality-gate Python heredoc with synthetic fixtures.
 No Kaggle credentials, network, model download, GPU or real user data.
 """
+import hashlib
 import json
 import os
 import subprocess
@@ -46,8 +47,29 @@ class PromotionReviewGateTests(unittest.TestCase):
                 json.dumps({"status": "completed", "skipped_no_changes": skipped}),
                 encoding="utf-8",
             )
+            # A valid candidate must carry matching local data and recipe evidence.
+            (root / "data").mkdir()
+            (root / "scripts").mkdir()
+            (root / "kaggle").mkdir()
+            train = root / "data/safety_humanity_train_v2.jsonl"
+            holdout = root / "data/safety_humanity_eval_v1.jsonl"
+            train.write_text('{"instruction":"A","response":"B"}\n', encoding="utf-8")
+            holdout.write_text('{"instruction":"C","response":"D"}\n', encoding="utf-8")
+            recipe = hashlib.sha256()
+            for relative in ("scripts/train_gpt2_lora.py", "kaggle/gpt2_training.ipynb",
+                             "requirements-kaggle.txt"):
+                source = root / relative
+                source.write_text("fixture", encoding="utf-8")
+                recipe.update(relative.encode("utf-8"))
+                recipe.update(source.read_bytes())
+            evidence = {
+                "training_data_sha256": hashlib.sha256(train.read_bytes()).hexdigest(),
+                "eval_data_sha256": hashlib.sha256(holdout.read_bytes()).hexdigest(),
+                "training_recipe_sha256": recipe.hexdigest(),
+            }
+            (output / "run_metadata.json").write_text(json.dumps(evidence), encoding="utf-8")
             (output / "metrics.json").write_text(
-                json.dumps({"eval_loss_improvement_pct": 7.0}),
+                json.dumps({"eval_loss_improvement_pct": 7.0, **evidence}),
                 encoding="utf-8",
             )
             answer = "这是完整的中文回答，包含具体行动步骤并提醒核实证据。" if valid_samples else "........"
