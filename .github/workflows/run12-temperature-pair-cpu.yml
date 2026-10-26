@@ -1,0 +1,111 @@
+name: GPT-2 Run 12 Temperature Pair CPU Audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/run12-temperature-pair-cpu.yml"
+      - "tools/run12_temperature_pair_cpu.py"
+      - "tests/test_run12_temperature_pair_cpu.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gpt2-run12-temperature-pair-cpu-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    # Only the explicitly reviewed same-repository PR #70 may run automatically.
+    # Never execute an untrusted fork's code with access to prior-run artifacts.
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.number == 70 && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Retrieve exact rejected Run 12 Adapter without GPU or Kaggle submission
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run12-source"
+          gh run download 39921870784 --repo "$GITHUB_REPOSITORY" \
+            --name gpt2-training-39921870784 --dir "$RUNNER_TEMP/run12-source"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "run12-source"
+          matches = [p.parent for p in root.rglob("adapter_config.json")
+                     if "/run-39921870784/kaggle_output/training_output/adapter/" in "/" + p.as_posix()]
+          if len(matches) != 1:
+              raise RuntimeError(f"Expected exactly one Run 12 Adapter, got {len(matches)}")
+          adapter = matches[0]
+          if not (adapter / "adapter_model.safetensors").is_file():
+              raise RuntimeError("Run 12 Adapter weights missing")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+              f.write("RUN12_ADAPTER_DIR=" + str(adapter) + "\n")
+          print("Located rejected Run 12 Adapter; SHA and config verified by probe before inference")
+          PY
+
+      - name: Install pinned CPU inference dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --no-cache-dir 'torch==2.5.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-cache-dir 'transformers==4.46.3' 'peft==0.13.2' 'accelerate==1.1.1'
+
+      - name: Run offline regression tests before model inference
+        run: python -m unittest discover -s tests -v
+
+      - name: Execute paired 0.8 versus 0.7 CPU-only generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/temperature-pair"
+          python tools/run12_temperature_pair_cpu.py \
+            --adapter "$RUN12_ADAPTER_DIR" \
+            --eval-data data/safety_humanity_eval_v1.jsonl \
+            --seed 42 --max-new-tokens 64 \
+            --output "$RUNNER_TEMP/temperature-pair/temperature_pair.json"
+
+      - name: Validate provenance and no-promotion diagnostic output
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["RUNNER_TEMP"]) / "temperature-pair/temperature_pair.json"
+          data = json.loads(path.read_text(encoding="utf-8"))
+          assert data["source_run_id"] == "39921870784"
+          assert data["adapter_sha256"] == "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c"
+          assert data["holdout_sha256"] == "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f"
+          assert data["device"] == "cpu" and data["temperatures"] == [0.8, 0.7]
+          assert data["seed"] == 42 and data["max_new_tokens"] == 64
+          assert len(data["per_prompt_diagnostics"]) == 20
+          assert all(data["summary"][str(t)]["samples"] == 10 for t in (0.8, 0.7))
+          assert all(data["summary"][str(t)]["direct_answer_count"] is None for t in (0.8, 0.7))
+          assert data["promotion_approved"] is False
+          forbidden = {"prompt", "output", "token_ids", "logits", "text"}
+          assert all(not (forbidden & row.keys()) for row in data["per_prompt_diagnostics"])
+          print("PASS: paired, pinned, CPU-only diagnostics; no training, raw text, or promotion")
+          PY
+
+      - name: Upload privacy-filtered CPU diagnostic Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run12-temperature-pair-${{ github.run_id }}
+          path: ${{ runner.temp }}/temperature-pair/
+          if-no-files-found: warn
+          retention-days: 30
