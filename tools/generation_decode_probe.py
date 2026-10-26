@@ -111,7 +111,7 @@ def main():
     def run_phase(model, phase):
         model.eval()
         for index, prompt in enumerate(prompts):
-            inputs = tokenizer(prompt, return_tensors="pt").to(device)
+            inputs = tokenizer(prompt, add_special_tokens=False, return_tensors="pt").to(device)
             for mode in ("greedy", "sample"):
                 torch.manual_seed(args.seed + index)
                 if torch.cuda.is_available():

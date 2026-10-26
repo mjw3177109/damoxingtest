@@ -475,7 +475,7 @@ def run(args):
     samples = []
     device = next(trainer.model.parameters()).device
     for prompt in prompts:
-        inputs = tokenizer(prompt, return_tensors="pt").to(device)
+        inputs = tokenizer(prompt, add_special_tokens=False, return_tensors="pt").to(device)
         with torch.no_grad():
             generated = trainer.model.generate(
                 **inputs,

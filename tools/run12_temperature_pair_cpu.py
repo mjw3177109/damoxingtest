@@ -150,7 +150,7 @@ def main():
     model.eval()
     rows = []
     for index, prompt in enumerate(prompts):
-        inputs = tokenizer(prompt, return_tensors="pt")
+        inputs = tokenizer(prompt, add_special_tokens=False, return_tensors="pt")
         for temperature in TEMPERATURES:
             # Same seed and same inputs for both arms. Never use CUDA/GPU.
             torch.manual_seed(args.seed + index)
