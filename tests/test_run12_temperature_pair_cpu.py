@@ -53,8 +53,9 @@ class TemperaturePairTests(unittest.TestCase):
                 verify_adapter(folder)
 
     def test_summary_requires_both_arms_and_no_automatic_quality_claim(self):
-        def row(temp, punct, eos):
-            return dict(temperature=temp, punctuation_only=punct,
+        def row(temp, punct, eos, index=0, digest="a" * 64):
+            return dict(temperature=temp, prompt_index=index, prompt_sha256=digest,
+                        punctuation_only=punct,
                         stop_reason_inferred="eos" if eos else "max_new_tokens",
                         longest_identical_character_run=4, generated_token_count=64)
         data = [row(0.8, True, False), row(0.7, False, True)]
@@ -66,6 +67,36 @@ class TemperaturePairTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Missing comparison arm"):
             summarize(data[:1])
 
+
+    def test_rejects_unpaired_prompt_indices(self):
+        rows = [
+            dict(temperature=0.8, prompt_index=0, prompt_sha256="a" * 64,
+                 punctuation_only=True, stop_reason_inferred="eos",
+                 longest_identical_character_run=4, generated_token_count=4),
+            dict(temperature=0.7, prompt_index=1, prompt_sha256="b" * 64,
+                 punctuation_only=False, stop_reason_inferred="eos",
+                 longest_identical_character_run=4, generated_token_count=4),
+        ]
+        with self.assertRaisesRegex(ValueError, "Unpaired"):
+            summarize(rows)
+
+    def test_rejects_duplicate_prompt_in_one_arm(self):
+        row = dict(prompt_index=0, prompt_sha256="a" * 64,
+                   punctuation_only=False, stop_reason_inferred="eos",
+                   longest_identical_character_run=2, generated_token_count=4)
+        rows = [dict(row, temperature=0.8), dict(row, temperature=0.8),
+                dict(row, temperature=0.7)]
+        with self.assertRaisesRegex(ValueError, "Duplicate"):
+            summarize(rows)
+
+    def test_rejects_same_index_with_different_prompt_hash(self):
+        row = dict(prompt_index=0, prompt_sha256="a" * 64,
+                   punctuation_only=False, stop_reason_inferred="eos",
+                   longest_identical_character_run=2, generated_token_count=4)
+        rows = [dict(row, temperature=0.8),
+                dict(row, temperature=0.7, prompt_sha256="b" * 64)]
+        with self.assertRaisesRegex(ValueError, "Unpaired"):
+            summarize(rows)
 
 if __name__ == "__main__":
     unittest.main()
