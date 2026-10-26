@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/daily-gpt2-training.yml"
+GIT_SHA = "0123456789abcdef0123456789abcdef01234567"
 
 
 def gate_script():
@@ -66,6 +67,7 @@ class PromotionReviewGateTests(unittest.TestCase):
                 "training_data_sha256": hashlib.sha256(train.read_bytes()).hexdigest(),
                 "eval_data_sha256": hashlib.sha256(holdout.read_bytes()).hexdigest(),
                 "training_recipe_sha256": recipe.hexdigest(),
+                "source_git_commit_sha": GIT_SHA,
             }
             (output / "run_metadata.json").write_text(json.dumps(evidence), encoding="utf-8")
             (output / "metrics.json").write_text(
@@ -81,7 +83,8 @@ class PromotionReviewGateTests(unittest.TestCase):
             adapter.mkdir()
             (adapter / "adapter_config.json").write_text("{}", encoding="utf-8")
             env = os.environ.copy()
-            env.update({"RUN_DIR": str(run_dir), "GITHUB_RUN_ID": "123456"})
+            env.update({"RUN_DIR": str(run_dir), "GITHUB_RUN_ID": "123456",
+                        "GITHUB_SHA": GIT_SHA})
             result = subprocess.run(
                 [sys.executable, "-c", gate_script()],
                 cwd=root, env=env, capture_output=True, text=True, timeout=10,
