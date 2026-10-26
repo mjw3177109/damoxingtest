@@ -1,12 +1,8 @@
 name: GPT-2 Run 12 Temperature Pair CPU Audit
 
+# The registered CPU experiment has been executed. Do not repeat on every PR sync:
+# pull_request paths compare the entire PR diff, not just the latest commit.
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - ".github/workflows/run12-temperature-pair-cpu.yml"
-      - "tools/run12_temperature_pair_cpu.py"
-      - "tests/test_run12_temperature_pair_cpu.py"
   workflow_dispatch:
 
 permissions:
@@ -14,14 +10,13 @@ permissions:
   actions: read
 
 concurrency:
-  group: gpt2-run12-temperature-pair-cpu-${{ github.event.pull_request.number || github.ref }}
+  group: gpt2-run12-temperature-pair-cpu-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   compare:
-    # Only the explicitly reviewed same-repository PR #70 may run automatically.
-    # Never execute an untrusted fork's code with access to prior-run artifacts.
-    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.number == 70 && github.event.pull_request.head.repo.full_name == github.repository)
+    # Manual-only read-only CPU diagnostics; never trigger on report commits.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     env:
