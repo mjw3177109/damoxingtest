@@ -88,6 +88,14 @@ def summarize(rows):
             "punctuation_only_count": sum(r["punctuation_only"] for r in rows_arm),
             "eos_count": sum(r["stop_reason_inferred"] == "eos" for r in rows_arm),
             "short_relative_to_reference_count": sum(r["short_relative_to_reference"] for r in rows_arm),
+            "eos_and_short_count": sum(
+                r["short_relative_to_reference"] and r["stop_reason_inferred"] == "eos"
+                for r in rows_arm
+            ),
+            "eos_and_short_indices": sorted(
+                r["prompt_index"] for r in rows_arm
+                if r["short_relative_to_reference"] and r["stop_reason_inferred"] == "eos"
+            ),
             "mean_output_to_reference_char_ratio": round(
                 sum(r["output_to_reference_char_ratio"] for r in rows_arm) / 10, 3),
             "mean_generated_token_count": round(

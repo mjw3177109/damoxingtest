@@ -46,6 +46,20 @@ class ExactReferenceTests(unittest.TestCase):
         self.assertEqual(result["candidate_minus_base_bigram_f1"], 0.125)
         self.assertIsNone(result["run12_candidate"]["direct_answer_count"])
 
+    def test_joint_eos_shortness_is_reported_without_text(self):
+        rows = paired_rows()
+        for row in rows:
+            if row["arm"] == "run12_candidate" and row["prompt_index"] in (2, 3):
+                row["short_relative_to_reference"] = True
+            if row["arm"] == "base" and row["prompt_index"] == 2:
+                row["short_relative_to_reference"] = True
+                row["stop_reason_inferred"] = "length"
+        summary = summarize(rows)
+        self.assertEqual(summary["run12_candidate"]["eos_and_short_count"], 2)
+        self.assertEqual(summary["run12_candidate"]["eos_and_short_indices"], [2, 3])
+        self.assertEqual(summary["base"]["eos_and_short_count"], 0)
+        self.assertEqual(summary["base"]["eos_and_short_indices"], [])
+
     def test_reject_raw_text_fields(self):
         rows = paired_rows()
         rows[0]["output"] = "unredacted"
