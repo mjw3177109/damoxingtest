@@ -14,6 +14,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from train_gpt2_lora import find_reusable_run  # noqa: E402
+from inference_only_submission_hold import should_hold_inference_only  # noqa: E402
 
 REQUIRED = ("metrics.json", "samples.json", "run_metadata.json", "summary.md")
 
@@ -91,13 +92,38 @@ def main():
         data=args.data, eval_data=args.eval_data, force_retrain=False
     ))
     reuse = candidate is not None
+    hold = False
     if reuse:
         source = materialize_skip(candidate["run_dir"], args.run_dir)
         print("SKIPPED_NO_CHANGES before Kaggle submission; historical source:", source)
+    elif should_hold_inference_only(ROOT):
+        # Exact audited inference-only change: do not submit a new GPU job
+        # merely because the whole-file training recipe hash changed.
+        # Do not reuse old evaluation metrics as fresh inference results.
+        hold = True
+        args.run_dir.mkdir(parents=True, exist_ok=True)
+        target = args.run_dir / "kaggle_output" / "training_output"
+        target.mkdir(parents=True, exist_ok=True)
+        (args.run_dir / "status.txt").write_text(
+            "BLOCKED_INFERENCE_ONLY_CHANGE\n", encoding="utf-8"
+        )
+        write_json(target / "training_status.json", {
+            "status": "blocked",
+            "reason": "audited_inference_only_change",
+            "kaggle_kernel_submitted": False,
+            "current_run_performed_gpu_training": False,
+            "message": "Exact audited inference-only edit; no Kaggle submission or new evaluation.",
+        })
+        (target / "training.log").write_text(
+            "BLOCKED_INFERENCE_ONLY_CHANGE; no Kaggle submission, "
+            "GPU training, new metrics or generation.\n", encoding="utf-8"
+        )
+        print("BLOCKED_INFERENCE_ONLY_CHANGE; no GPU submission authorized.")
     else:
         print("No completed matching data/recipe evidence; normal guarded Kaggle path applies.")
     with args.github_output.open("a", encoding="utf-8") as handle:
         handle.write("reuse=" + ("true" if reuse else "false") + "\n")
+        handle.write("hold=" + ("true" if hold else "false") + "\n")
 
 
 if __name__ == "__main__":
