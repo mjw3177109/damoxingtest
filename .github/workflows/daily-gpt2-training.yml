@@ -104,17 +104,17 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
 
       - name: Install Kaggle CLI
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.hold != 'true'
         run: python -m pip install --upgrade kaggle
 
       - name: Prepare kernel metadata
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.hold != 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
         run: python scripts/prepare_kaggle_kernel.py --username "$KAGGLE_USERNAME" --slug "$KAGGLE_KERNEL_SLUG"
 
       - name: Validate Kaggle title and kernel ID
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.hold != 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
         shell: bash
@@ -132,7 +132,7 @@ jobs:
           PY
 
       - name: Launch, monitor, and download
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.hold != 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
