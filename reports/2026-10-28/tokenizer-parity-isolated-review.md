@@ -46,3 +46,29 @@ This report is an experiment hypothesis and change log, **not evidence of a mode
 ### Next safe action
 
 Keep PR #72 Draft. Design and separately test a fail-closed, no-unnecessary-GPU pre-submit path for inference-only changes, without allowing changes to the training recipe or data to be silently reused. Only then perform paired CPU inference on the fixed Run 12 adapter and ten fixed prompts, review semantic/safety quality, and consider a new training run after actual Kaggle quota/concurrency verification.
+
+
+## 2026-10-28 05:06 CST: exact-snapshot no-GPU pre-submit hold (Draft only)
+
+### Hypothesis and bounded implementation
+
+- Risk: the generation-only tokenizer change modifies the full-script recipe SHA and could turn a scheduled/push Daily run into a redundant Kaggle submission even though training data and training objective are unchanged.
+- New `tools/inference_only_submission_hold.py` compares **exact Git blob IDs** for the isolated training script, Kaggle notebook and Kaggle requirements, and SHA-256 for both train/evaluation datasets. Only the audited PR #72 snapshot matches. This is a one-time, explicit hold, **not** a general-purpose relaxation of recipe validation.
+- `tools/pre_submit_reuse_guard.py` now emits `hold=true` and `BLOCKED_INFERENCE_ONLY_CHANGE` for that exact snapshot, writes a blocked `training_status.json` and a truthful `training.log`, and does **not** generate metrics, samples, or a Kaggle submission.
+- Four Kaggle workflow steps (CLI install, kernel preparation, metadata validation, launch/monitor/download) now require `hold != true`. Existing concurrency, credential checks, training-recipe/data checks, promotion gate and approved adapter remain unchanged. A changed training script, notebook, requirements, or either dataset does **not** match the one-time hold and continues through the existing guarded path.
+- The current guard is intentionally conservative and snapshot-specific. Do not treat it as proof that all future changes are safe or that Kaggle quota/concurrency has been independently verified.
+
+### Commits and actual verification
+
+- Implementation commits: `9d9438f49cf918f290db40b70b70476d52fa4295`, `819b5ff0c8b5b991700c61ec8fe3505ee6a8db4a`, `447c03b210caae38674a0e2dcfba038cad0d8753`, `0789af2f03aeb87c3ef413930c24ee260521de50`, `e6f0a525ed633bb1cdedd2962bc3acd68a094ec6`, `619ef467713b09fbd4d711545902591bb45a6e8b`.
+- Local isolated test (5 cases): Python compile and unittest PASS. No GPU or network required.
+- [GitHub Actions Static Preflight Run 40583847468](https://github.com/mjw3177109/damoxingtest/actions/runs/40583847468), Job `122470007648`, code SHA `619ef467713b09fbd4d711545902591bb45a6e8b`: **completed/success; 187/187 unit tests PASS, Python compile PASS, Ruff F821 PASS, response-only/-100 masking checks PASS**.
+- Integration tests assert that the exact repository snapshot triggers `hold=true`, `reuse=false`, `kaggle_kernel_submitted=false`, and no new `metrics.json` or `samples.json`; they also check all four Kaggle steps are guarded and concurrency settings remain intact.
+- These are offline tests and static workflow checks. **No production Daily execution of the new hold has occurred**; keep PR #72 Draft until an independent review of workflow and fail-closed behavior.
+
+### Model evidence, comparison, decision
+
+- Source GPU Run: `39921870784` (Tesla T4, 14.56 GiB, 33 steps, Train Loss 3.246455, Val Loss 3.147277, PPL 23.272599); historical values only.
+- Latest Daily: `40457573324`, `SKIPPED_NO_CHANGES`, no new GPU or model samples. Historical generation quality 0/10 meaningful; `promotion_approved=false`.
+- No new Kernel ID, model training, inference evaluation, quality improvement or promotion. Kaggle real-time status and remaining quota remain independently unverified. Historical Run 8 and Run 12 use different validation sets, so no cross-run best-model claim.
+- Decision: **keep PR #72 Draft/unmerged**; preserve historical model and quality/safety gates. Before merging, review the one-time pinned hold and its operational impact, and test fixed-weight paired CPU inference separately. Only launch GPU when an actual training change is justified and Kaggle quota/concurrency can be checked.
