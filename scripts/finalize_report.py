@@ -98,6 +98,8 @@ def main():
     if training_status.get("skipped_no_changes"):
         report.append("- 本次训练动作：跳过重复训练；复用已有指标与样例，未进行新的 GPU 参数更新。")
         report.append("- 复用来源： " + str(training_status.get("reused_from_run", "历史成功运行")))
+    elif final_status == "BLOCKED_INFERENCE_ONLY_CHANGE":
+        report.append("- 本次训练动作：已审计的仅推理代码改动触发安全阻断；未提交 Kaggle、未执行 GPU 训练或新评估。")
     report.append("")
     report.append("## 历史复用指标（本轮未训练或重新评估）" if skipped else "## 本次结果")
     report.append("")
@@ -136,7 +138,10 @@ def main():
             report.append("")
             report.append("当前指标没有显示明确的验证集 loss 改善。需要结合训练日志、生成样例和后续更可靠的测试集继续判断。")
     else:
-        report.append("没有找到有效的 metrics.json，因此不能声称本次模型训练和评估成功。")
+        if final_status == "BLOCKED_INFERENCE_ONLY_CHANGE":
+            report.append("安全阻断按预期未生成 metrics.json 或 samples.json；没有新训练或模型质量证据。")
+        else:
+            report.append("没有找到有效的 metrics.json，因此不能声称本次模型训练和评估成功。")
         if training_status.get("error"):
             report.append("")
             report.append("训练错误类型： " + str(training_status.get("error_type", "未知")))
@@ -145,7 +150,10 @@ def main():
         report.append("")
         report.append("## 整体评价")
         report.append("")
-        report.append("本次运行没有足够的实测指标支持模型质量结论。请先解决凭据、GPU、配额、网络或训练脚本问题，再重新运行。")
+        if final_status == "BLOCKED_INFERENCE_ONLY_CHANGE":
+            report.append("本次是主动防止重复 GPU 提交的预期安全阻断，不是训练失败，也不是模型改进。")
+        else:
+            report.append("本次运行没有足够的实测指标支持模型质量结论。请先解决凭据、GPU、配额、网络或训练脚本问题，再重新运行。")
 
     report.append("")
     report.append("## 候选模型晋级门槛")
@@ -190,6 +198,10 @@ def main():
     report.append("")
     if final_status == "SKIPPED_NO_CHANGES":
         report.append("本次训练集、评估集和训练方案与最近一次完整运行一致，因此跳过重复 GPU 训练。新增数据或训练方案发生变化后再启动新训练。")
+    elif final_status == "BLOCKED_INFERENCE_ONLY_CHANGE":
+        report.append("1. 独立审查本次精确版本匹配的 GPU 阻断保护，确认训练代码、数据与依赖未发生未经审核的变化。")
+        report.append("2. 使用历史固定模型与固定提示词开展 CPU 推理对照，不将历史 Loss 或样例冒充本轮结果。")
+        report.append("3. 在质量审核、Kaggle 配额和远端并发状态核实前，不启动新的 GPU 训练或批准模型晋级。")
     elif final_status == "SUCCESS":
         report.append("1. 人工复核 samples.json，检查事实性、隐私、伤害风险、偏见和是否遵循指令。")
         report.append("2. 比较验证集指标与上一版本，不因单次 loss 变化就直接宣称模型进步。")
