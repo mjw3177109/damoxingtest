@@ -45,3 +45,12 @@
 - 不将 cron 改动称为已解决调度问题；不将 Actions success 或 Kernel COMPLETE 等同模型训练成功。
 - 训练质量问题仍为独立阻塞：严格输入 CPU 实验发现 2/10 疑似短答，语义/安全审核未完成，候选模型不晋级。
 - 经验：整点调度是可测量的潜在延迟因素；修复须以未来真实 Run 证据验收，且与 GPU 训练质量及隐私边界严格隔离。
+
+## 2026-10-27 14:00 CST 追踪更新：迟到 Daily 已实际触发
+
+- 新增真实 event=schedule Run：[40457573324](https://github.com/mjw3177109/damoxingtest/actions/runs/40457573324)，GitHub API `created_at=2026-10-27T05:50:15Z`，即北京时间 **13:50:15**；相对主分支仍生效的 09:00 Cron **延迟 4h50m15s**。此前表格的“尚无已确认 Run”仅代表 11:56 的历史快照，现已被本条更新替代；不能认定当日调度丢失。
+- 10 月 23–27 日五次实际 schedule 延迟依次为 4h36m58s、4h16m06s、4h33m02s、4h39m48s、4h50m15s；平均约 **4h35m14s**。10 月 27 日为该五次中最长延迟。新 Cron 仍仅在 Draft PR #71，尚未合并，不能称为修复生效。
+- Run 40457573324 `completed/success`，但真实 Job 日志输出 `SKIPPED_NO_CHANGES before Kaggle submission`，`training.log` 记录 `PRE_SUBMIT_SKIPPED_NO_CHANGES`；`training_status.json` 确认 `kaggle_kernel_submitted=false`，未进行 GPU 训练或新评估。
+- 本轮新报告目录：`reports/2026-10-27/run-40457573324`。已读取 `training.log`、`metrics.json`、`samples.json`、`report.md`、`run_metadata.json`、`training_status.json`、`quality_gate.json`。新 Artifact [12713006845](https://github.com/mjw3177109/damoxingtest/actions/runs/40457573324/artifacts/12713006845) 存在、未过期；其为报告归档，不是新训练权重。
+- 复用的历史来源仍是 `reports/2026-10-23/run-39921870784`；本轮 `train_steps=0`、`train_loss=null`、`gpu_name=null`，Loss/PPL 与样例都是历史数据；质量门槛 `promotion_approved=false`，有效生成 0/10，人工审核 pending。
+- 真实 Kaggle Kernel 实时状态和剩余配额未独立核实；本轮不触发训练。此增量仅更新审计证据，**不更改 Cron、训练、测试、权限或安全守卫**。下一步仍需审阅 PR #71 后合并，并至少观察七次真实 schedule 触发。
