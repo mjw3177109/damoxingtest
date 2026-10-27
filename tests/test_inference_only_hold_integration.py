@@ -15,6 +15,14 @@ class InferenceOnlyHoldIntegrationTests(unittest.TestCase):
     def test_audited_pr_snapshot_matches_exact_pin(self):
         self.assertTrue(should_hold_inference_only(ROOT))
 
+    def test_all_four_kaggle_submission_steps_respect_hold(self):
+        workflow = (ROOT / ".github" / "workflows" / "daily-gpt2-training.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertEqual(workflow.count("steps.reuse_guard.outputs.hold != 'true'"), 4)
+        self.assertIn("group: daily-gpt2-training-canonical-kernel", workflow)
+        self.assertIn("cancel-in-progress: false", workflow)
+
     def test_pre_submit_guard_holds_without_generating_metrics(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
