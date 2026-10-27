@@ -25,7 +25,7 @@
 - 每日触发次数保持 1 次；保留 `workflow_dispatch`、`push` 过滤、`concurrency: daily-gpt2-training-canonical-kernel`、`cancel-in-progress: false`、`pre_submit_reuse_guard.py`、Kaggle 状态预检和质量门槛。
 - 不更改模型、数据、训练超参数、凭据、GPU 提交路径或晋级机制。
 - 修改仅在独立 PR 分支，**main 尚未改变；未启动 GPU 训练**。合并前须通过静态 CI 和人工审阅。
-- 静态变更验证：原 cron 精确匹配一次；替换后可完整还原原文件，除该行外无改动。PR CI 结果待核实。
+- 静态变更验证：原 cron 精确匹配一次；替换后可完整还原原文件，除该行外无改动。独立 PR #71 的静态 CI [40447132397](https://github.com/mjw3177109/damoxingtest/actions/runs/40447132397) **completed/success，178/178 项测试通过**；包含新增的 2 项调度安全回归测试、Ruff F821 和 Response-only 标签掩码检查。PR #70 的 290 项测试属于另一分支，不能将两者直接作为同一代码版本的测试增减比较。
 
 ## 真实训练与 Artifact 基线
 
