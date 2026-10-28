@@ -247,18 +247,18 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
             output = run_dir / "kaggle_output" / "training_output"
             output.mkdir(parents=True)
             (run_dir / "status.txt").write_text(
-                "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED\\n", encoding="utf-8"
+                "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED\n", encoding="utf-8"
             )
             (output / "training_status.json").write_text(
-                '{"status":"completed","skipped_no_changes":false}\\n',
+                '{"status":"completed","skipped_no_changes":false}\n',
                 encoding="utf-8",
             )
             (output / "metrics.json").write_text(
-                '{"eval_loss_improvement_pct":9.0,"final_eval_loss":1.0}\\n',
+                '{"eval_loss_improvement_pct":9.0,"final_eval_loss":1.0}\n',
                 encoding="utf-8",
             )
             (output / "samples.json").write_text(
-                '[{"prompt":"test","output":"some unverified response"}]\\n',
+                '[{"prompt":"test","output":"some unverified response"}]\n',
                 encoding="utf-8",
             )
             result = subprocess.run(
