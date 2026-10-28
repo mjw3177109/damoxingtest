@@ -2,7 +2,7 @@ name: Daily GPT-2 T4 Training
 
 on:
   schedule:
-    - cron: "0 1 * * *" # 09:00 Asia/Shanghai
+    - cron: "17 1 * * *" # 09:17 Asia/Shanghai; avoid high-load :00 scheduling
   workflow_dispatch:
   push:
     branches:
