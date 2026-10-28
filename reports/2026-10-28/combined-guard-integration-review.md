@@ -1,0 +1,37 @@
+# 2026-10-28 16:58 CST — Combined Kaggle GPU safety guards (Draft PR #72)
+
+## Confirmed integration risk and hypothesis
+
+- Base `main`: `361fa9ca36528eea70a7fea2d606c1bab50e24b8`, Daily cron `17 1 * * *` (09:17 Asia/Shanghai).
+- Prior PR #72 head: `2ca96c9ee74031dfb2f1a30e62c3178481ea820d`. Its exact-snapshot inference-only hold gated four Kaggle preparation/submission steps, but its terminal-failure branch still set `NEED_PUSH=true` for existing ERROR/FAILED/CANCELLED kernels.
+- Draft PR #73 independently corrected the terminal-failure path. This review tests both protections together on PR #72, **without merging or starting Kaggle**.
+- Hypothesis: terminal failure should require human review, while inference-only changes must still block all four Kaggle steps; scheduler, concurrency and model promotion protections must remain unchanged.
+
+## Minimal branch-only change
+
+- Workflow fix commit: `32861634604258a1a60e59ff1ae05ac20105bd59`. Replace only the terminal-failure retry branch with `KAGGLE_RETRY_REQUIRES_REVIEW` and immediate exit; no `kaggle kernels push` on that branch.
+- Offline integration test commit: `acc71ef0972378967a0f04f7ed9d5fae37f5bf39`. Reuse PR #73's executable fake-CLI regression for all six accepted terminal-state spellings; additionally assert four `hold != 'true'` gates, canonical concurrency, `cancel-in-progress: false` and the deployed 09:17 cron.
+- The exact-snapshot pin, training script, notebook, requirements, training/eval data, quality gate and credentials were not changed.
+- Existing PR #73 remains Draft. This does not authorize either PR to merge automatically.
+
+## Real CI and validation
+
+- [Static Preflight Run 40660567642](https://github.com/mjw3177109/damoxingtest/actions/runs/40660567642), Job `122722269492`, head `acc71ef0972378967a0f04f7ed9d5fae37f5bf39`: **completed/success**.
+- Raw job log: **193/193 unittest PASS**; six terminal-state shell simulations PASS; combined guard assertion PASS; Python compile PASS; Ruff F821 PASS; response-only collator and `-100` masking PASS.
+- Previous PR #72 [Run 40654125040](https://github.com/mjw3177109/damoxingtest/actions/runs/40654125040): 191/191 PASS. The two extra tests are engineering coverage, not model improvement.
+- No actual Kaggle status/remaining quota or cross-account concurrency verified. Public Kernel URL not accessible. No GPU allocation, new kernel push, model inference, or production Daily run was performed by this change.
+
+## Historical training and quality baseline (NOT current-run results)
+
+- Formal latest Daily [40457573324](https://github.com/mjw3177109/damoxingtest/actions/runs/40457573324): `SKIPPED_NO_CHANGES`, historical metrics/samples reused; latest main report `reports/2026-10-27/run-40457573324`.
+- Historical GPU [Run 39921870784](https://github.com/mjw3177109/damoxingtest/actions/runs/39921870784): Tesla T4, 14.56 GiB; 3 epochs, 33 effective steps, train loss 3.246455, val loss 3.147277, PPL 23.272599. Candidate outputs 0/10 meaningful, `promotion_approved=false`.
+- Train SHA-256: `ad2dfcb5f4549981d555b570e255f54b98c7162c52d46f72af147dc3a035847c`.
+- Fixed eval SHA-256: `5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f`.
+- No comparable new metrics or generated samples. Run 8 vs Run 12 holdouts differ, so no historical-best improvement claim.
+
+## Decision, rollback, next action and lesson
+
+- **Keep PR #72 and #73 Draft**. Keep `main` and last rollback model unchanged. Do not spend GPU to test a merge.
+- Next: independent diff/review of combined workflow and report-finalization status, live Kaggle quota/concurrency verification, then fixed-weight CPU-only generation comparison. Only validated quality improvement can justify promotion or a controlled GPU experiment.
+- Lesson: individual PR CI success does not establish cross-PR compatibility; execute terminal-failure paths alongside exact-snapshot hold checks before merging.
+- No secrets, tokens, personal data or model weights were committed.
