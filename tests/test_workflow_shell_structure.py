@@ -15,7 +15,7 @@ WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/daily-gpt2-t
 def embedded_bash_scripts(source):
     lines = source.splitlines()
     for index, line in enumerate(lines):
-        match = re.match(r"^(\\s*)run:\\s*\\|\\s*$", line)
+        match = re.match(r"^(\s*)run:\s*\|\s*$", line)
         if not match:
             continue
         key_indent = len(match.group(1))
@@ -31,7 +31,7 @@ def embedded_bash_scripts(source):
 class WorkflowShellStructureTests(unittest.TestCase):
     def test_step_names_are_unique(self):
         source = WORKFLOW.read_text(encoding="utf-8")
-        names = re.findall(r"(?m)^\\s{6}- name:\\s*(.+)$", source)
+        names = re.findall(r"(?m)^\s{6}- name:\s*(.+)$", source)
         self.assertGreaterEqual(len(names), 8, "Expected the production workflow steps")
         self.assertEqual(len(names), len(set(names)), "Duplicate workflow step names")
 
