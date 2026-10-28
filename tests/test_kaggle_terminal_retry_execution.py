@@ -85,6 +85,59 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
                 self.assertFalse((run_dir / "kaggle_push.log").exists())
 
 
+    def test_unknown_or_unauthorized_status_cannot_push(self):
+        """Unrecognized status or CLI/auth failure must not spend GPU."""
+        script = launch_shell_script()
+        for status, exit_code in (
+            ("unexpected kernel response", 0),
+            ("403 Forbidden", 1),
+            ("API rate limit exceeded", 1),
+        ):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                bin_dir = root / "bin"
+                bin_dir.mkdir()
+                run_dir = root / "run"
+                run_dir.mkdir()
+                push_marker = root / "unexpected_push"
+                fake_kaggle = bin_dir / "kaggle"
+                fake_kaggle.write_text(
+                    '#!/usr/bin/env bash\n'
+                    'if [[ "$1" == "kernels" && "$2" == "status" ]]; then\n'
+                    '  printf "%s\\n" "$TEST_KERNEL_STATUS"\n'
+                    '  exit "$TEST_KERNEL_EXIT_CODE"\n'
+                    'fi\n'
+                    'if [[ "$1" == "kernels" && "$2" == "push" ]]; then\n'
+                    '  touch "$TEST_PUSH_MARKER"\n'
+                    '  exit 0\n'
+                    'fi\n'
+                    'exit 97\n',
+                    encoding="utf-8",
+                )
+                fake_kaggle.chmod(0o755)
+                env = os.environ.copy()
+                env.update({
+                    "PATH": str(bin_dir) + os.pathsep + env.get("PATH", ""),
+                    "RUN_DIR": str(run_dir),
+                    "KAGGLE_USERNAME": "offline-test",
+                    "KAGGLE_KERNEL_SLUG": "offline-test",
+                    "TEST_KERNEL_STATUS": status,
+                    "TEST_KERNEL_EXIT_CODE": str(exit_code),
+                    "TEST_PUSH_MARKER": str(push_marker),
+                })
+                result = subprocess.run(
+                    ["bash", "-c", script], cwd=ROOT, env=env,
+                    capture_output=True, text=True, timeout=10, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(
+                    (run_dir / "status.txt").read_text(encoding="utf-8").strip(),
+                    "KAGGLE_STATUS_FAILED",
+                )
+                self.assertFalse(push_marker.exists(), result.stdout)
+                self.assertFalse((run_dir / "kaggle_push.log").exists())
+
+
     def test_combined_inference_hold_and_terminal_failure_guards(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertEqual(workflow.count("steps.reuse_guard.outputs.hold != 'true'"), 4)
