@@ -240,6 +240,44 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
             self.assertNotIn("本次训练动作：跳过重复训练", report)
             self.assertNotIn("本次未进行新的训练或评估", report)
 
+    def test_adopted_kernel_non_skipped_metrics_are_not_fresh(self):
+        """A remote completed claim without provenance is not this run's training."""
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            output = run_dir / "kaggle_output" / "training_output"
+            output.mkdir(parents=True)
+            (run_dir / "status.txt").write_text(
+                "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED\\n", encoding="utf-8"
+            )
+            (output / "training_status.json").write_text(
+                '{"status":"completed","skipped_no_changes":false}\\n',
+                encoding="utf-8",
+            )
+            (output / "metrics.json").write_text(
+                '{"eval_loss_improvement_pct":9.0,"final_eval_loss":1.0}\\n',
+                encoding="utf-8",
+            )
+            (output / "samples.json").write_text(
+                '[{"prompt":"test","output":"some unverified response"}]\\n',
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "finalize_report.py"),
+                 "--run-dir", str(run_dir)],
+                cwd=ROOT, capture_output=True, text=True, timeout=30, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                (run_dir / "final_status.txt").read_text(encoding="utf-8").strip(),
+                "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED",
+            )
+            report = (run_dir / "report.md").read_text(encoding="utf-8")
+            self.assertIn("来源未核实的远端指标", report)
+            self.assertIn("来源未核实的远端样例", report)
+            self.assertNotIn("本次验证集 loss 在", report)
+            self.assertNotIn("## 本次结果", report)
+            self.assertNotIn("最终判定： **SUCCESS**", report)
+
     def test_rate_limit_during_polling_stops_without_retry(self):
         """An active kernel followed by 429 must stop promptly, never push."""
         script = launch_shell_script()
