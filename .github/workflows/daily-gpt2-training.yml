@@ -152,8 +152,387 @@ jobs:
 
           NEED_PUSH="false"
           FINAL="UNKNOWN"
-          if [[ "$STATUS_CODE" -eq 0 ]]; then
-            if echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.COMPLETE|Status: COMPLETE|^COMPLETE$'; then
+          # Auth/rate-limit errors take precedence over a misleading COMPLETE
+          # or RUNNING string, even when the Kaggle CLI exits successfully.
+          if echo "$EXISTING_STATUS" | grep -Eqi '(^|[^0-9])(401|403|429)([^0-9]|$)|Forbidden|Unauthorized|Permission denied|rate limit|Too Many Requests'; then
+            echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
+            echo "Initial Kaggle status contains an auth/rate-limit error; refusing GPU submission."
+            exit 0
+          elif [[ "$STATUS_CODE" -eq 0 ]]; then
+            if echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.COMPLETE|Status: COMPLETE|^COMPLETE
+              NEED_PUSH="true"
+              echo "Existing kernel is complete; submitting a fresh version to train the current repository code."
+            elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(RUNNING|QUEUED|PENDING)|Status: (RUNNING|QUEUED|PENDING)'; then
+              FINAL="RUNNING"
+              echo "Existing kernel is active; monitoring it without duplicate submission."
+            elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
+              # A terminal failure is not authorization to spend more GPU.
+              # Require independent review before any future retry.
+              echo "KAGGLE_RETRY_REQUIRES_REVIEW" > "$RUN_DIR/status.txt"
+              echo "Existing kernel failed or was cancelled; refusing automatic GPU retry."
+              exit 0
+            else
+              echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
+              echo "Status response was not a recognized Kaggle kernel state; refusing duplicate submission."
+              exit 0
+            fi
+          elif echo "$EXISTING_STATUS" | grep -Eqi '(^|[^0-9])404([^0-9]|$)|kernel.*not found|No such kernel|does not exist'; then
+            NEED_PUSH="true"
+            echo "No existing kernel found at the canonical ID; creating the first run."
+          else
+            echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
+            echo "Could not verify existing kernel state; refusing to submit a potentially duplicate GPU job."
+            exit 0
+          fi
+
+          if [[ "$NEED_PUSH" == "true" ]]; then
+            kaggle kernels push -p kaggle > "$RUN_DIR/kaggle_push.log" 2>&1
+            PUSH_CODE=$?
+            cat "$RUN_DIR/kaggle_push.log"
+            if [[ "$PUSH_CODE" -ne 0 ]]; then
+              echo "KAGGLE_PUSH_FAILED" > "$RUN_DIR/status.txt"
+              exit 0
+            fi
+            FINAL="RUNNING"
+          fi
+
+          if [[ "$FINAL" != "COMPLETE" ]]; then
+            FINAL="TIMEOUT"
+            for ATTEMPT in $(seq 1 210); do
+              STATUS="$(kaggle kernels status "$KERNEL_ID" 2>&1)"
+              STATUS_CODE=$?
+              printf '[%s] (exit %s) %s\n' "$ATTEMPT" "$STATUS_CODE" "$STATUS" >> "$RUN_DIR/kaggle_status.log"
+              echo "Kaggle status $ATTEMPT: $STATUS"
+              # Authentication/rate-limit errors take precedence even when a
+              # CLI wrapper exits 0 or includes a misleading COMPLETE string.
+              if echo "$STATUS" | grep -Eqi '(^|[^0-9])(401|403|429)([^0-9]|$)|Forbidden|Unauthorized|Permission denied|rate limit|Too Many Requests'; then
+                FINAL="KAGGLE_STATUS_FAILED"; break
+              fi
+              if [[ "$STATUS_CODE" -eq 0 ]] && echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.COMPLETE|Status: COMPLETE|^COMPLETE$'; then
+                FINAL="COMPLETE"; break
+              fi
+              if echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
+                FINAL="KAGGLE_STATUS_FAILED"; break
+              fi
+              sleep 60
+            done
+          fi
+
+          echo "$FINAL" > "$RUN_DIR/status.txt"
+          echo "Kaggle kernel final status: $FINAL"
+
+          if [[ "$FINAL" == "COMPLETE" ]]; then
+            kaggle kernels output "$KERNEL_ID" -p "$RUN_DIR/kaggle_output" --force > "$RUN_DIR/kaggle_output_download.log" 2>&1
+            DOWNLOAD_CODE=$?
+            cat "$RUN_DIR/kaggle_output_download.log"
+            if [[ "$DOWNLOAD_CODE" -ne 0 ]]; then
+              echo "KAGGLE_OUTPUT_UNAVAILABLE" > "$RUN_DIR/status.txt"
+            elif ! find "$RUN_DIR/kaggle_output" -type f -print -quit | grep -q .; then
+              echo "KAGGLE_OUTPUT_UNAVAILABLE" > "$RUN_DIR/status.txt"
+            fi
+          fi
+          exit 0
+
+      - name: Candidate quality gate and approved-adapter promotion
+        if: steps.preflight.outputs.kaggle_ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, math, re, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          run_dir = Path(os.environ["RUN_DIR"])
+          statuses = sorted(run_dir.joinpath("kaggle_output").rglob("training_status.json"))
+          reasons = []
+          metrics = {}
+          samples = []
+          status = {}
+          adapter_dir = None
+          if not statuses:
+              reasons.append("training_status.json missing from Kaggle output")
+          else:
+              root = statuses[0].parent
+              status = json.loads(statuses[0].read_text(encoding="utf-8"))
+              metrics_path = root / "metrics.json"
+              samples_path = root / "samples.json"
+              candidate_adapter = root / "adapter"
+              if metrics_path.is_file():
+                  metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+              else:
+                  reasons.append("metrics.json missing")
+              if samples_path.is_file():
+                  samples = json.loads(samples_path.read_text(encoding="utf-8"))
+              else:
+                  reasons.append("samples.json missing")
+              if candidate_adapter.is_dir() and (candidate_adapter / "adapter_config.json").is_file():
+                  adapter_dir = candidate_adapter
+              elif not status.get("skipped_no_changes"):
+                  reasons.append("LoRA adapter files missing")
+          if status.get("skipped_no_changes"):
+              reasons.append("No new training candidate was created; prior evidence was reused.")
+          if status.get("status") != "completed":
+              reasons.append("training_status is not completed")
+          improvement = metrics.get("eval_loss_improvement_pct")
+          if not isinstance(improvement, (int, float)) or not math.isfinite(float(improvement)) or improvement <= 0:
+              reasons.append("fixed-holdout validation loss did not improve")
+          outputs = [str(item.get("output", "")).strip() for item in samples if isinstance(item, dict)]
+          if len(outputs) < 10:
+              reasons.append("fewer than 10 fixed holdout generation samples")
+          meaningful = 0
+          for output in outputs:
+              compact = re.sub(r"\s+", "", output)
+              if len(compact) >= 8 and not re.search(r"https?://|www\.|baidu\.com", output, re.I) and not re.search(r"(.)\1{7,}", compact):
+                  meaningful += 1
+          if meaningful < max(8, math.ceil(len(outputs) * 0.8)):
+              reasons.append(f"generation quality heuristic passed only {meaningful}/{len(outputs)} samples")
+          # The automated checks below are preliminary diagnostics, not a
+          # semantic/safety approval. Never promote a model without a separate,
+          # auditable independent review and an explicit approval mechanism.
+          automated_precheck_passed = not reasons and adapter_dir is not None
+          if automated_precheck_passed:
+              reasons.append("Independent semantic and safety review pending; automatic promotion disabled.")
+          gate = {
+              "checked_at_utc": datetime.now(timezone.utc).isoformat(),
+              "run_id": os.environ.get("GITHUB_RUN_ID"),
+              "candidate_status": "skipped_no_changes" if status.get("skipped_no_changes") else status.get("status", "missing"),
+              "evidence_reused": bool(status.get("skipped_no_changes")),
+              "automated_precheck_passed": automated_precheck_passed,
+              "human_review_status": "pending",
+              "promotion_approved": False,
+              "reasons": reasons,
+              "meaningful_generation_samples": meaningful,
+              "generation_sample_count": len(outputs),
+              "eval_loss_improvement_pct": improvement,
+              "training_data_sha256": metrics.get("training_data_sha256"),
+              "eval_data_sha256": metrics.get("eval_data_sha256")
+          }
+          (run_dir / "quality_gate.json").write_text(json.dumps(gate, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print("PROMOTION_REJECTED; candidate archived for independent review:", json.dumps(reasons, ensure_ascii=False))
+          PY
+
+      - name: Upload model weights and full outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpt2-training-${{ github.run_id }}
+          path: |
+            ${{ steps.preflight.outputs.run_dir }}/kaggle_output
+            ${{ steps.preflight.outputs.run_dir }}/kaggle_push.log
+            ${{ steps.preflight.outputs.run_dir }}/kaggle_status.log
+            ${{ steps.preflight.outputs.run_dir }}/kaggle_output_download.log
+            ${{ steps.preflight.outputs.run_dir }}/quality_gate.json
+            checkpoints/adapter_latest
+            checkpoints/adapter_version.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Evaluate and sync report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${RUN_DIR:-}" ]]; then
+            RUN_DATE="$(TZ=Asia/Shanghai date +%F)"
+            RUN_DIR="reports/$RUN_DATE/run-$GITHUB_RUN_ID"
+            mkdir -p "$RUN_DIR"
+            echo "WORKFLOW_ABORTED_BEFORE_PREFLIGHT" > "$RUN_DIR/status.txt"
+          fi
+          [[ -f "$RUN_DIR/status.txt" ]] || echo "WORKFLOW_ABORTED_WITHOUT_STATUS" > "$RUN_DIR/status.txt"
+          python scripts/finalize_report.py --run-dir "$RUN_DIR"
+          rm -rf "$RUN_DIR/kaggle_output"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$RUN_DIR"
+          if [[ -d checkpoints/adapter_latest && -f checkpoints/adapter_version.json ]]; then
+            git add checkpoints/adapter_latest checkpoints/adapter_version.json
+          fi
+          if ! git diff --cached --quiet; then
+            git commit -m "Record GPT-2 training run ${{ github.run_id }}"
+            PUSH_OK="false"
+            for ATTEMPT in 1 2 3; do
+              git fetch origin main
+              git rebase origin/main
+              if git push origin HEAD:main; then
+                PUSH_OK="true"
+                break
+              fi
+              echo "Report push attempt $ATTEMPT failed; retrying after rebase."
+              sleep $((ATTEMPT * 2))
+            done
+            if [[ "$PUSH_OK" != "true" ]]; then
+              echo "::error::Could not sync the report to main after three attempts."
+              exit 1
+            fi
+          fi
+          FINAL_STATUS="$(cat "$RUN_DIR/final_status.txt")"
+          echo "Final status: $FINAL_STATUS"
+          if [[ "$FINAL_STATUS" != "SUCCESS" && "$FINAL_STATUS" != "SKIPPED_NO_CHANGES" ]]; then
+            echo "::error::Training was not successful. See $RUN_DIR/report.md"
+            exit 1
+          fi; then
+                FINAL="COMPLETE"; break
+              fi
+              if echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
+                FINAL="KAGGLE_STATUS_FAILED"; break
+              fi
+              sleep 60
+            done
+          fi
+
+          echo "$FINAL" > "$RUN_DIR/status.txt"
+          echo "Kaggle kernel final status: $FINAL"
+
+          if [[ "$FINAL" == "COMPLETE" ]]; then
+            kaggle kernels output "$KERNEL_ID" -p "$RUN_DIR/kaggle_output" --force > "$RUN_DIR/kaggle_output_download.log" 2>&1
+            DOWNLOAD_CODE=$?
+            cat "$RUN_DIR/kaggle_output_download.log"
+            if [[ "$DOWNLOAD_CODE" -ne 0 ]]; then
+              echo "KAGGLE_OUTPUT_UNAVAILABLE" > "$RUN_DIR/status.txt"
+            elif ! find "$RUN_DIR/kaggle_output" -type f -print -quit | grep -q .; then
+              echo "KAGGLE_OUTPUT_UNAVAILABLE" > "$RUN_DIR/status.txt"
+            fi
+          fi
+          exit 0
+
+      - name: Candidate quality gate and approved-adapter promotion
+        if: steps.preflight.outputs.kaggle_ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, math, re, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          run_dir = Path(os.environ["RUN_DIR"])
+          statuses = sorted(run_dir.joinpath("kaggle_output").rglob("training_status.json"))
+          reasons = []
+          metrics = {}
+          samples = []
+          status = {}
+          adapter_dir = None
+          if not statuses:
+              reasons.append("training_status.json missing from Kaggle output")
+          else:
+              root = statuses[0].parent
+              status = json.loads(statuses[0].read_text(encoding="utf-8"))
+              metrics_path = root / "metrics.json"
+              samples_path = root / "samples.json"
+              candidate_adapter = root / "adapter"
+              if metrics_path.is_file():
+                  metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+              else:
+                  reasons.append("metrics.json missing")
+              if samples_path.is_file():
+                  samples = json.loads(samples_path.read_text(encoding="utf-8"))
+              else:
+                  reasons.append("samples.json missing")
+              if candidate_adapter.is_dir() and (candidate_adapter / "adapter_config.json").is_file():
+                  adapter_dir = candidate_adapter
+              elif not status.get("skipped_no_changes"):
+                  reasons.append("LoRA adapter files missing")
+          if status.get("skipped_no_changes"):
+              reasons.append("No new training candidate was created; prior evidence was reused.")
+          if status.get("status") != "completed":
+              reasons.append("training_status is not completed")
+          improvement = metrics.get("eval_loss_improvement_pct")
+          if not isinstance(improvement, (int, float)) or not math.isfinite(float(improvement)) or improvement <= 0:
+              reasons.append("fixed-holdout validation loss did not improve")
+          outputs = [str(item.get("output", "")).strip() for item in samples if isinstance(item, dict)]
+          if len(outputs) < 10:
+              reasons.append("fewer than 10 fixed holdout generation samples")
+          meaningful = 0
+          for output in outputs:
+              compact = re.sub(r"\s+", "", output)
+              if len(compact) >= 8 and not re.search(r"https?://|www\.|baidu\.com", output, re.I) and not re.search(r"(.)\1{7,}", compact):
+                  meaningful += 1
+          if meaningful < max(8, math.ceil(len(outputs) * 0.8)):
+              reasons.append(f"generation quality heuristic passed only {meaningful}/{len(outputs)} samples")
+          # The automated checks below are preliminary diagnostics, not a
+          # semantic/safety approval. Never promote a model without a separate,
+          # auditable independent review and an explicit approval mechanism.
+          automated_precheck_passed = not reasons and adapter_dir is not None
+          if automated_precheck_passed:
+              reasons.append("Independent semantic and safety review pending; automatic promotion disabled.")
+          gate = {
+              "checked_at_utc": datetime.now(timezone.utc).isoformat(),
+              "run_id": os.environ.get("GITHUB_RUN_ID"),
+              "candidate_status": "skipped_no_changes" if status.get("skipped_no_changes") else status.get("status", "missing"),
+              "evidence_reused": bool(status.get("skipped_no_changes")),
+              "automated_precheck_passed": automated_precheck_passed,
+              "human_review_status": "pending",
+              "promotion_approved": False,
+              "reasons": reasons,
+              "meaningful_generation_samples": meaningful,
+              "generation_sample_count": len(outputs),
+              "eval_loss_improvement_pct": improvement,
+              "training_data_sha256": metrics.get("training_data_sha256"),
+              "eval_data_sha256": metrics.get("eval_data_sha256")
+          }
+          (run_dir / "quality_gate.json").write_text(json.dumps(gate, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print("PROMOTION_REJECTED; candidate archived for independent review:", json.dumps(reasons, ensure_ascii=False))
+          PY
+
+      - name: Upload model weights and full outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpt2-training-${{ github.run_id }}
+          path: |
+            ${{ steps.preflight.outputs.run_dir }}/kaggle_output
+            ${{ steps.preflight.outputs.run_dir }}/kaggle_push.log
+            ${{ steps.preflight.outputs.run_dir }}/kaggle_status.log
+            ${{ steps.preflight.outputs.run_dir }}/kaggle_output_download.log
+            ${{ steps.preflight.outputs.run_dir }}/quality_gate.json
+            checkpoints/adapter_latest
+            checkpoints/adapter_version.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Evaluate and sync report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${RUN_DIR:-}" ]]; then
+            RUN_DATE="$(TZ=Asia/Shanghai date +%F)"
+            RUN_DIR="reports/$RUN_DATE/run-$GITHUB_RUN_ID"
+            mkdir -p "$RUN_DIR"
+            echo "WORKFLOW_ABORTED_BEFORE_PREFLIGHT" > "$RUN_DIR/status.txt"
+          fi
+          [[ -f "$RUN_DIR/status.txt" ]] || echo "WORKFLOW_ABORTED_WITHOUT_STATUS" > "$RUN_DIR/status.txt"
+          python scripts/finalize_report.py --run-dir "$RUN_DIR"
+          rm -rf "$RUN_DIR/kaggle_output"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$RUN_DIR"
+          if [[ -d checkpoints/adapter_latest && -f checkpoints/adapter_version.json ]]; then
+            git add checkpoints/adapter_latest checkpoints/adapter_version.json
+          fi
+          if ! git diff --cached --quiet; then
+            git commit -m "Record GPT-2 training run ${{ github.run_id }}"
+            PUSH_OK="false"
+            for ATTEMPT in 1 2 3; do
+              git fetch origin main
+              git rebase origin/main
+              if git push origin HEAD:main; then
+                PUSH_OK="true"
+                break
+              fi
+              echo "Report push attempt $ATTEMPT failed; retrying after rebase."
+              sleep $((ATTEMPT * 2))
+            done
+            if [[ "$PUSH_OK" != "true" ]]; then
+              echo "::error::Could not sync the report to main after three attempts."
+              exit 1
+            fi
+          fi
+          FINAL_STATUS="$(cat "$RUN_DIR/final_status.txt")"
+          echo "Final status: $FINAL_STATUS"
+          if [[ "$FINAL_STATUS" != "SUCCESS" && "$FINAL_STATUS" != "SKIPPED_NO_CHANGES" ]]; then
+            echo "::error::Training was not successful. See $RUN_DIR/report.md"
+            exit 1
+          fi; then
               NEED_PUSH="true"
               echo "Existing kernel is complete; submitting a fresh version to train the current repository code."
             elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(RUNNING|QUEUED|PENDING)|Status: (RUNNING|QUEUED|PENDING)'; then
