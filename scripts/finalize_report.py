@@ -70,7 +70,7 @@ def main():
 
     if status == "BLOCKED_MISSING_KAGGLE_SECRETS":
         final_status = "BLOCKED_MISSING_KAGGLE_SECRETS"
-    elif status in ("KAGGLE_PUSH_FAILED", "TIMEOUT", "KAGGLE_STATUS_FAILED", "KAGGLE_OUTPUT_UNAVAILABLE"):
+    elif status in ("KAGGLE_PUSH_FAILED", "TIMEOUT", "KAGGLE_STATUS_FAILED", "KAGGLE_OUTPUT_UNAVAILABLE", "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED"):
         final_status = status
     elif training_status.get("status") == "failed":
         final_status = "TRAINING_FAILED"
