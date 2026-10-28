@@ -151,6 +151,7 @@ jobs:
           printf 'Initial status check (exit %s): %s\n' "$STATUS_CODE" "$EXISTING_STATUS" | tee "$RUN_DIR/kaggle_initial_status.log"
 
           NEED_PUSH="false"
+          EXISTING_KERNEL_ACTIVE="false"
           FINAL="UNKNOWN"
           # Auth/rate-limit errors take precedence over a misleading COMPLETE
           # or RUNNING string, even when the Kaggle CLI exits successfully.
@@ -164,6 +165,7 @@ jobs:
               echo "Existing kernel is complete; submitting a fresh version to train the current repository code."
             elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(RUNNING|QUEUED|PENDING)|Status: (RUNNING|QUEUED|PENDING)'; then
               FINAL="RUNNING"
+              EXISTING_KERNEL_ACTIVE="true"
               echo "Existing kernel is active; monitoring it without duplicate submission."
             elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
               # A terminal failure is not authorization to spend more GPU.
@@ -230,6 +232,13 @@ jobs:
             elif ! find "$RUN_DIR/kaggle_output" -type f -print -quit | grep -q .; then
               echo "KAGGLE_OUTPUT_UNAVAILABLE" > "$RUN_DIR/status.txt"
             fi
+          fi
+          # An already-running remote kernel may belong to a different commit
+          # or dataset. Keep its output for review, but never label it as a
+          # fresh training success without verified provenance.
+          if [[ "$EXISTING_KERNEL_ACTIVE" == "true" && "$(cat "$RUN_DIR/status.txt")" == "COMPLETE" ]]; then
+            echo "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED" > "$RUN_DIR/status.txt"
+            echo "Existing kernel finished, but its code/data provenance was not verified; manual review required."
           fi
           exit 0
 
