@@ -61,7 +61,8 @@ def main():
     metrics = read_json(run_dir / "metrics.json") if (run_dir / "metrics.json").exists() else {}
     metadata = read_json(run_dir / "run_metadata.json") if (run_dir / "run_metadata.json").exists() else {}
     samples = read_json(run_dir / "samples.json") if (run_dir / "samples.json").exists() else []
-    skipped = bool(training_status.get("skipped_no_changes"))
+    unverified_existing = status == "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED"
+    skipped = bool(training_status.get("skipped_no_changes")) or unverified_existing
     if skipped:
         # Reused historical stage files must not masquerade as stages executed now.
         for stage_file in (run_dir / "stages").glob("*.md"):
@@ -104,7 +105,7 @@ def main():
     elif final_status == "BLOCKED_INFERENCE_ONLY_CHANGE":
         report.append("- 本次训练动作：已审计的仅推理代码改动触发安全阻断；未提交 Kaggle、未执行 GPU 训练或新评估。")
     report.append("")
-    report.append("## 历史复用指标（本轮未训练或重新评估）" if skipped else "## 本次结果")
+    report.append("## 来源未核实的远端指标（不得归属本轮）" if unverified_existing else ("## 历史复用指标（本轮未训练或重新评估）" if skipped else "## 本次结果"))
     report.append("")
     if metrics:
         if skipped:
@@ -186,7 +187,8 @@ def main():
     report.append("## 模型输出与日志")
     report.append("")
     if "samples.json" in copied and isinstance(samples, list):
-        report.append(("- 已保存历史复用生成样例： " if skipped else "- 已保存生成样例： ") + "samples.json（" + str(len(samples)) + " 条）")
+        sample_label = "- 已保存来源未核实的远端样例： " if unverified_existing else ("- 已保存历史复用生成样例： " if skipped else "- 已保存生成样例： ")
+        report.append(sample_label + "samples.json（" + str(len(samples)) + " 条）")
     else:
         report.append("- 没有找到 samples.json。")
     for name in ["training.log", "metrics.json", "run_metadata.json", "training_status.json", "summary.md"]:
