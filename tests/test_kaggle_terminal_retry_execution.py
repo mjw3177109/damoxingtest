@@ -34,6 +34,8 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
         script = launch_shell_script()
         for status in (
             "KernelWorkerStatus.ERROR",
+            "Status: ERROR",
+            "KernelWorkerStatus.FAILED",
             "Status: FAILED",
             "KernelWorkerStatus.CANCELLED",
             "Status: CANCELLED",
