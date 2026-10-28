@@ -5,6 +5,7 @@ never call `kaggle kernels push`, even when the shell step itself exits 0.
 """
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -92,6 +93,31 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", workflow)
         self.assertIn("KAGGLE_RETRY_REQUIRES_REVIEW", workflow)
 
+
+
+    def test_review_required_finalizes_as_blocked_without_fake_metrics(self):
+        """The combined PR must never turn a refused retry into training success."""
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            run_dir.mkdir()
+            (run_dir / "status.txt").write_text(
+                "KAGGLE_RETRY_REQUIRES_REVIEW\n", encoding="utf-8"
+            )
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "finalize_report.py"),
+                 "--run-dir", str(run_dir)],
+                cwd=ROOT, capture_output=True, text=True, timeout=30, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                (run_dir / "final_status.txt").read_text(encoding="utf-8").strip(),
+                "KAGGLE_RETRY_REQUIRES_REVIEW",
+            )
+            report = (run_dir / "report.md").read_text(encoding="utf-8")
+            self.assertIn("KAGGLE_RETRY_REQUIRES_REVIEW", report)
+            self.assertNotIn("最终判定： **SUCCESS**", report)
+            self.assertFalse((run_dir / "metrics.json").exists())
+            self.assertFalse((run_dir / "samples.json").exists())
 
 
 if __name__ == "__main__":
