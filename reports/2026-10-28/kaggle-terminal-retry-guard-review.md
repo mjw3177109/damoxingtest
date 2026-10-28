@@ -49,3 +49,14 @@ Model promotion remains rejected. Historical Run 8 and Run 12 use different hold
 - Historical GPU source remains Run `39921870784`: Tesla T4 14.56 GiB, 33 steps, train loss 3.246455, val loss 3.147277, PPL 23.272599; samples 0/10 meaningful, promotion rejected. No new model output, loss, or GPU work this hour.
 - Limitation: GitHub CI does not establish live Kaggle state or remaining quota. PR #73 stays Draft, main and last rollback candidate unchanged. Next review: combined workflow behavior with PR #71 (cron) and PR #72 (inference-only GPU hold), and fixed-weight CPU inference quality comparison before any GPU submission.
 - Lesson: a safety regex with multiple accepted formats needs a complete executable status matrix; test coverage is not equivalent to production deployment or model quality progress.
+
+## 2026-10-28 15:07 CST — merged scheduler compatibility review
+
+- **Finding:** PR #71 merged to `main` at `361fa9ca36528eea70a7fea2d606c1bab50e24b8`, changing the Daily cron to `17 1 * * *`. The PR #73 branch still contained `0 1 * * *`, creating a schedule-regression risk when the retry guard is eventually merged.
+- **Minimal fix:** Update only the cron line on the PR #73 branch to preserve the merged 09:17 Asia/Shanghai schedule; retain `KAGGLE_RETRY_REQUIRES_REVIEW`, existing concurrency and quality gates. Add a CPU-only regression assertion for the cron and `cancel-in-progress: false`.
+- **Commits:** schedule correction `3044a6dc4183519469f2d5645da9fe064594b18f`; regression test `742f53ff53a48a636ed276ae5343f1414066c8db`.
+- **Evidence:** [GitHub Actions Run 40647992333](https://github.com/mjw3177109/damoxingtest/actions/runs/40647992333), Job `122681188941`, completed/success, **182/182 offline tests PASS**, Python compile PASS, Ruff F821 PASS, response-only masking/Trainer checks PASS. The cron regression test was executed and passed.
+- **Training safety:** No Kaggle push, no GPU allocation, no new Kernel ID, no new training metrics or samples; this PR remains Draft and unmerged. No secrets or personal data were added.
+- **Comparison:** Previous PR #73 CI 179/179 PASS; new CI 182/182 PASS (different test counts are engineering checks, not model metrics). The historical Run 12 candidate still fails the 0/10 meaningful-generation gate and is **not promoted**. Run 8 and Run 12 do not share a directly comparable fixed evaluation set.
+- **Lesson:** After merging a shared-workflow PR, independently rebase or reconcile other open PRs against the new main configuration before merging; branch-local CI alone does not catch schedule regressions across branches.
+- **Next:** Independently review PR #72's old cron and its no-GPU hold against current `main`, then validate combined guards in offline integration tests before any merge. Do not use a Kaggle GPU run as a merge test.
