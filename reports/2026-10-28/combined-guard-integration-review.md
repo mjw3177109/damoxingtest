@@ -35,3 +35,13 @@
 - Next: independent diff/review of combined workflow and report-finalization status, live Kaggle quota/concurrency verification, then fixed-weight CPU-only generation comparison. Only validated quality improvement can justify promotion or a controlled GPU experiment.
 - Lesson: individual PR CI success does not establish cross-PR compatibility; execute terminal-failure paths alongside exact-snapshot hold checks before merging.
 - No secrets, tokens, personal data or model weights were committed.
+
+## 2026-10-28 18:05 CST — Finalization safety regression
+
+- **Hypothesis / gap:** PR #72's combined guard already had executable terminal-state CLI tests, but lacked a direct regression proving that `KAGGLE_RETRY_REQUIRES_REVIEW` finalizes as blocked, with no fabricated `metrics.json` or `samples.json`. The separate Draft PR #73 tested this; the combined candidate needs its own contract.
+- **Minimal test-only commit:** `de20f6c4d48169f0e91f44aa0c2ecdd68b0af79e`; changed only `tests/test_kaggle_terminal_retry_execution.py`, adding a real offline `scripts/finalize_report.py` subprocess test. No production code, training data, model, credentials or Kaggle workflow execution changed.
+- **Real CI evidence:** [Run 40669323946](https://github.com/mjw3177109/damoxingtest/actions/runs/40669323946), Job `122751796044`, `completed/success`; raw logs: **194/194 unittest PASS**, including `test_review_required_finalizes_as_blocked_without_fake_metrics`; Ruff F821 PASS; response-only collator and `-100` masking PASS.
+- **Historical control only:** GPU Run `39921870784`, Tesla T4 14.56 GiB, 3 epochs / 33 steps, Train Loss 3.246455, Val Loss 3.147277, PPL 23.272599. Training SHA-256 `ad2dfcb5f4549981d555b570e255f54b98c7162c52d46f72af147dc3a035847c`; evaluation SHA-256 `5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f`. No new GPU run, Kernel ID verification, inference samples, or model metrics this hour.
+- **Comparison:** Prior combined CI Run `40660654854`: 193/193 PASS. Current Run `40669323946`: 194/194 PASS. This is one extra regression, **not** model improvement; historical Run 8 and Run 12 use non-comparable holdouts.
+- **Promotion and rollback:** 0/10 meaningful historical generations; `promotion_approved=false`. Keep PR #72/#73 Draft, `main` unchanged, prior adapter rollback path intact. Kaggle live status, quota and remote concurrency remain unverified; no GPU launch authorized.
+- **Lesson / next:** Verify both the execution path **and** report-finalization path for every blocked state. Next perform independent review of the combined workflow and obtain live Kaggle state before any controlled training; fixed-weight CPU-only generation comparison remains the first model-quality experiment.
