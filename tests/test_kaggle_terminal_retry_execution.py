@@ -94,6 +94,10 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
             ("API rate limit exceeded", 1),
             ("403 Forbidden: user not found (404)", 1),
             ("429 API rate limit exceeded: kernel not found", 1),
+            # Some wrappers can exit 0 and mix COMPLETE with API errors.
+            # The initial status check must fail closed before any GPU push.
+            ("KernelWorkerStatus.COMPLETE\\n403 Forbidden", 0),
+            ("Status: COMPLETE\\n429 Too Many Requests", 0),
         ):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
