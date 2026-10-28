@@ -201,12 +201,40 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(
                     (run_dir / "status.txt").read_text(encoding="utf-8").strip(),
-                    "COMPLETE",
+                    "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED",
                 )
                 self.assertTrue((run_dir / "kaggle_output/marker.txt").is_file())
                 self.assertFalse(push_marker.exists(), result.stdout)
                 self.assertFalse((run_dir / "kaggle_push.log").exists())
 
+
+    def test_existing_kernel_output_cannot_be_reported_as_fresh_training(self):
+        """Even completed remote output cannot prove this GitHub run trained it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            run_dir.mkdir()
+            (run_dir / "status.txt").write_text(
+                "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED\n", encoding="utf-8"
+            )
+            (run_dir / "training_status.json").write_text(
+                '{"status":"completed","skipped_no_changes":true}\n', encoding="utf-8"
+            )
+            (run_dir / "metrics.json").write_text(
+                '{"final_eval_loss":1.0}\n', encoding="utf-8"
+            )
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "finalize_report.py"),
+                 "--run-dir", str(run_dir)],
+                cwd=ROOT, capture_output=True, text=True, timeout=30, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                (run_dir / "final_status.txt").read_text(encoding="utf-8").strip(),
+                "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED",
+            )
+            report = (run_dir / "report.md").read_text(encoding="utf-8")
+            self.assertNotIn("最终判定： **SUCCESS**", report)
+            self.assertNotIn("最终判定： **SKIPPED_NO_CHANGES**", report)
 
     def test_rate_limit_during_polling_stops_without_retry(self):
         """An active kernel followed by 429 must stop promptly, never push."""
