@@ -207,7 +207,12 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
     def test_rate_limit_during_polling_stops_without_retry(self):
         """An active kernel followed by 429 must stop promptly, never push."""
         script = launch_shell_script()
-        for poll_status in ("429 Too Many Requests", "API rate limit exceeded"):
+        for poll_status, exit_code in (
+            ("429 Too Many Requests", 1),
+            ("API rate limit exceeded", 1),
+            ("429 Too Many Requests", 0),
+            ("KernelWorkerStatus.COMPLETE\\n429 Too Many Requests", 0),
+        ):
             with self.subTest(poll_status=poll_status), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 bin_dir = root / "bin"
@@ -225,7 +230,7 @@ if [[ "$1" == "kernels" && "$2" == "status" ]]; then
     exit 0
   fi
   printf '%s\n' "$TEST_POLL_STATUS"
-  exit 1
+  exit "$TEST_POLL_EXIT_CODE"
 fi
 if [[ "$1" == "kernels" && "$2" == "push" ]]; then
   touch "$TEST_PUSH_MARKER"
@@ -244,6 +249,7 @@ exit 97
                     "KAGGLE_KERNEL_SLUG": "offline-test",
                     "TEST_STATUS_MARKER": str(root / "status_seen"),
                     "TEST_POLL_STATUS": poll_status,
+                    "TEST_POLL_EXIT_CODE": str(exit_code),
                     "TEST_PUSH_MARKER": str(push_marker),
                 })
                 result = subprocess.run(
