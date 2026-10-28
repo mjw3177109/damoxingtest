@@ -209,7 +209,7 @@ jobs:
               if echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
                 FINAL="KAGGLE_STATUS_FAILED"; break
               fi
-              if [[ "$STATUS_CODE" -ne 0 ]] && echo "$STATUS" | grep -Eqi '403|Permission denied|unauthorized|401'; then
+              if [[ "$STATUS_CODE" -ne 0 ]] && echo "$STATUS" | grep -Eqi '(^|[^0-9])(401|403|429)([^0-9]|$)|Forbidden|Unauthorized|Permission denied|rate limit|Too Many Requests'; then
                 FINAL="KAGGLE_STATUS_FAILED"; break
               fi
               sleep 60
