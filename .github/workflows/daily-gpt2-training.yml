@@ -170,7 +170,13 @@ jobs:
               echo "Status response was not a recognized Kaggle kernel state; refusing duplicate submission."
               exit 0
             fi
-          elif echo "$EXISTING_STATUS" | grep -Eqi '404|Not Found|not found|does not exist|No such kernel'; then
+          elif echo "$EXISTING_STATUS" | grep -Eqi '(^|[^0-9])(401|403|429)([^0-9]|$)|Forbidden|Unauthorized|Permission denied|rate limit|Too Many Requests'; then
+            # An auth or quota error may also mention "not found" or 404.
+            # Fail closed: mixed error text is never proof the kernel is absent.
+            echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
+            echo "Kaggle status contains an auth/rate-limit error; refusing GPU submission."
+            exit 0
+          elif echo "$EXISTING_STATUS" | grep -Eqi '(^|[^0-9])404([^0-9]|$)|kernel.*not found|No such kernel|does not exist'; then
             NEED_PUSH="true"
             echo "No existing kernel found at the canonical ID; creating the first run."
           else
