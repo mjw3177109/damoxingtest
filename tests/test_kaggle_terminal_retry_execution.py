@@ -48,11 +48,11 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
                 fake_kaggle = bin_dir / "kaggle"
                 fake_kaggle.write_text(
                     '#!/usr/bin/env bash\n'
-                    'if [[ "$1" == "status" ]]; then\n'
+                    'if [[ "$1" == "kernels" && "$2" == "status" ]]; then\n'
                     '  printf "%s\\n" "$TEST_KERNEL_STATUS"\n'
                     '  exit 0\n'
                     'fi\n'
-                    'if [[ "$1" == "push" ]]; then\n'
+                    'if [[ "$1" == "kernels" && "$2" == "push" ]]; then\n'
                     '  touch "$TEST_PUSH_MARKER"\n'
                     '  exit 0\n'
                     'fi\n'
