@@ -204,6 +204,69 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
                 self.assertFalse((run_dir / "kaggle_push.log").exists())
 
 
+    def test_genuine_missing_kernel_is_pushed_once(self):
+        """An unambiguous 404 permits one first creation, then monitors output."""
+        script = launch_shell_script()
+        for missing_status in ("404 Not Found: kernel does not exist", "No such kernel"):
+            with self.subTest(missing_status=missing_status), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                bin_dir = root / "bin"
+                bin_dir.mkdir()
+                run_dir = root / "run"
+                run_dir.mkdir()
+                push_counter = root / "push_count"
+                status_marker = root / "initial_status_seen"
+                fake_kaggle = bin_dir / "kaggle"
+                fake_kaggle.write_text(
+                    '#!/usr/bin/env bash\n'
+                    'if [[ "$1" == "kernels" && "$2" == "status" ]]; then\n'
+                    '  if [[ ! -f "$TEST_STATUS_MARKER" ]]; then\n'
+                    '    touch "$TEST_STATUS_MARKER"\n'
+                    '    printf "%s\\n" "$TEST_MISSING_STATUS"\n'
+                    '    exit 1\n'
+                    '  fi\n'
+                    '  printf "KernelWorkerStatus.COMPLETE\\n"\n'
+                    '  exit 0\n'
+                    'fi\n'
+                    'if [[ "$1" == "kernels" && "$2" == "push" ]]; then\n'
+                    '  printf "push\\n" >> "$TEST_PUSH_COUNTER"\n'
+                    '  exit 0\n'
+                    'fi\n'
+                    'if [[ "$1" == "kernels" && "$2" == "output" ]]; then\n'
+                    '  mkdir -p "$RUN_DIR/kaggle_output"\n'
+                    '  printf "offline output only\\n" > "$RUN_DIR/kaggle_output/marker.txt"\n'
+                    '  exit 0\n'
+                    'fi\n'
+                    'exit 97\n',
+                    encoding="utf-8",
+                )
+                fake_kaggle.chmod(0o755)
+                env = os.environ.copy()
+                env.update({
+                    "PATH": str(bin_dir) + os.pathsep + env.get("PATH", ""),
+                    "RUN_DIR": str(run_dir),
+                    "KAGGLE_USERNAME": "offline-test",
+                    "KAGGLE_KERNEL_SLUG": "offline-test",
+                    "TEST_MISSING_STATUS": missing_status,
+                    "TEST_STATUS_MARKER": str(status_marker),
+                    "TEST_PUSH_COUNTER": str(push_counter),
+                })
+                result = subprocess.run(
+                    ["bash", "-c", script], cwd=ROOT, env=env,
+                    capture_output=True, text=True, timeout=10, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(
+                    (run_dir / "status.txt").read_text(encoding="utf-8").strip(),
+                    "COMPLETE",
+                )
+                self.assertEqual(
+                    push_counter.read_text(encoding="utf-8").splitlines(),
+                    ["push"],
+                )
+                self.assertTrue((run_dir / "kaggle_output/marker.txt").is_file())
+
+
     def test_combined_inference_hold_and_terminal_failure_guards(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertEqual(workflow.count("steps.reuse_guard.outputs.hold != 'true'"), 4)
