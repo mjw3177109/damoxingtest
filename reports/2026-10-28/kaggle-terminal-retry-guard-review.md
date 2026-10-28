@@ -12,7 +12,7 @@ The Daily workflow on main (`f46a904632afbc63ce8053a2a953e0400e3f16b0`) containe
 - For a recognized existing terminal failure, set `KAGGLE_RETRY_REQUIRES_REVIEW` and exit before `kaggle kernels push`.
 - Preserve existing first-run, COMPLETE, active-kernel monitoring, concurrency and promotion behavior. Do not disable safety controls.
 - Added offline tests for terminal-state refusal and truthful non-success report finalization.
-- [Static Preflight Run 40606805945](https://github.com/mjw3177109/damoxingtest/actions/runs/40606805945) was queued when this report was drafted; its final outcome must be checked separately.
+- [Static Preflight Run 40606805945](https://github.com/mjw3177109/damoxingtest/actions/runs/40606805945), Job `122548220031`, code SHA `eda6a9860683cb6afdbfed6fa6203c2f6a64af37`: **completed/success, 178/178 offline unit tests PASS (including both new retry-guard tests), Python compile PASS, Ruff F821 PASS**. No Kaggle submission or GPU training occurred. This document-only update does not change tested code.
 
 ## Training/evaluation evidence
 
