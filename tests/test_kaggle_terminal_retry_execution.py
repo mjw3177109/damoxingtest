@@ -235,6 +235,10 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
             report = (run_dir / "report.md").read_text(encoding="utf-8")
             self.assertNotIn("最终判定： **SUCCESS**", report)
             self.assertNotIn("最终判定： **SKIPPED_NO_CHANGES**", report)
+            self.assertIn("代码、数据和配置来源未核实", report)
+            self.assertIn("指标不得计为本次新测量", report)
+            self.assertNotIn("本次训练动作：跳过重复训练", report)
+            self.assertNotIn("本次未进行新的训练或评估", report)
 
     def test_rate_limit_during_polling_stops_without_retry(self):
         """An active kernel followed by 429 must stop promptly, never push."""
