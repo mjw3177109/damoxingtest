@@ -67,5 +67,20 @@ class InferenceOnlySubmissionHoldTests(unittest.TestCase):
         self.assertFalse(hold.should_hold_inference_only(self.root))
 
 
+
+class DailyScheduleCompatibilityTests(unittest.TestCase):
+    """Do not silently revert the main-branch Daily schedule in this PR."""
+
+    def test_preserves_deployed_schedule_and_serialization(self):
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github" / "workflows" / "daily-gpt2-training.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn('cron: "17 1 * * *"', workflow)
+        self.assertNotIn('cron: "0 1 * * *"', workflow)
+        self.assertIn("group: daily-gpt2-training-canonical-kernel", workflow)
+        self.assertIn("cancel-in-progress: false", workflow)
+
+
 if __name__ == "__main__":
     unittest.main()
