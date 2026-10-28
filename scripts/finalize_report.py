@@ -95,7 +95,10 @@ def main():
         report.append("- 模型与完整输出 Artifact： https://github.com/" + repository + "/actions/runs/" + run_id + "/artifacts")
     report.append("- Kaggle 任务状态： " + status)
     report.append("- 最终判定： **" + final_status + "**")
-    if training_status.get("skipped_no_changes"):
+    if final_status == "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED":
+        report.append("- 本次训练动作：仅监控已存在的远端 Kernel；代码、数据和配置来源未核实，不能认定本轮训练成功或确实跳过训练。")
+        report.append("- 远端下载的指标和样例仅供审查，不得归属当前 GitHub Run。")
+    elif training_status.get("skipped_no_changes"):
         report.append("- 本次训练动作：跳过重复训练；复用已有指标与样例，未进行新的 GPU 参数更新。")
         report.append("- 复用来源： " + str(training_status.get("reused_from_run", "历史成功运行")))
     elif final_status == "BLOCKED_INFERENCE_ONLY_CHANGE":
@@ -105,7 +108,10 @@ def main():
     report.append("")
     if metrics:
         if skipped:
-            report.append("- 指标来源： " + str(training_status.get("reused_from_run", "历史运行")) + "；以下指标不是本次新测量。")
+            if final_status == "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED":
+                report.append("- 指标来源：已有远端 Kernel，来源未核实；以下指标不得计为本次新测量。")
+            else:
+                report.append("- 指标来源： " + str(training_status.get("reused_from_run", "历史运行")) + "；以下指标不是本次新测量。")
         report.extend([
             "- 基础模型： " + str(metrics.get("model_name", metadata.get("model_name", "未知"))),
             "- GPU： " + ("本轮未使用；历史来源：" + str(metadata.get("source_run_gpu_name", "未知")) if skipped else str(metrics.get("gpu_name", metadata.get("gpu_name", "未知")))),
@@ -124,7 +130,7 @@ def main():
         if skipped:
             report.append("## 整体评价")
             report.append("")
-            report.append("本次未进行新的训练或评估；以上 Loss、PPL 和生成样例均为历史证据，不得视为本轮改进。")
+            report.append("已有远端 Kernel 的来源未核实；以上 Loss、PPL 和样例不能归属本轮。" if final_status == "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED" else "本次未进行新的训练或评估；以上 Loss、PPL 和生成样例均为历史证据，不得视为本轮改进。")
         elif isinstance(change, (int, float)) and change > 0:
             report.append("## 整体评价")
             report.append("")
@@ -170,7 +176,7 @@ def main():
     report.append("## 阶段记录" if not skipped else "## 本轮阶段记录（未执行训练）")
     report.append("")
     if skipped:
-        report.append("本次未执行训练阶段；历史阶段说明仅保留在来源归档中，不属于本轮成果。")
+        report.append("已有远端 Kernel 的训练阶段来源未核实，不得归属本轮。" if final_status == "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED" else "本次未执行训练阶段；历史阶段说明仅保留在来源归档中，不属于本轮成果。")
     elif stage_files:
         for stage_name in sorted(set(stage_files)):
             report.append("- stages/" + stage_name)
