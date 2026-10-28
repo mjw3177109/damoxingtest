@@ -204,6 +204,62 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
                 self.assertFalse((run_dir / "kaggle_push.log").exists())
 
 
+    def test_rate_limit_during_polling_stops_without_retry(self):
+        """An active kernel followed by 429 must stop promptly, never push."""
+        script = launch_shell_script()
+        for poll_status in ("429 Too Many Requests", "API rate limit exceeded"):
+            with self.subTest(poll_status=poll_status), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                bin_dir = root / "bin"
+                bin_dir.mkdir()
+                run_dir = root / "run"
+                run_dir.mkdir()
+                push_marker = root / "unexpected_push"
+                fake_kaggle = bin_dir / "kaggle"
+                fake_kaggle.write_text(
+                    r"""#!/usr/bin/env bash
+if [[ "$1" == "kernels" && "$2" == "status" ]]; then
+  if [[ ! -f "$TEST_STATUS_MARKER" ]]; then
+    touch "$TEST_STATUS_MARKER"
+    printf 'KernelWorkerStatus.RUNNING\n'
+    exit 0
+  fi
+  printf '%s\n' "$TEST_POLL_STATUS"
+  exit 1
+fi
+if [[ "$1" == "kernels" && "$2" == "push" ]]; then
+  touch "$TEST_PUSH_MARKER"
+  exit 0
+fi
+exit 97
+""",
+                    encoding="utf-8",
+                )
+                fake_kaggle.chmod(0o755)
+                env = os.environ.copy()
+                env.update({
+                    "PATH": str(bin_dir) + os.pathsep + env.get("PATH", ""),
+                    "RUN_DIR": str(run_dir),
+                    "KAGGLE_USERNAME": "offline-test",
+                    "KAGGLE_KERNEL_SLUG": "offline-test",
+                    "TEST_STATUS_MARKER": str(root / "status_seen"),
+                    "TEST_POLL_STATUS": poll_status,
+                    "TEST_PUSH_MARKER": str(push_marker),
+                })
+                result = subprocess.run(
+                    ["bash", "-c", script], cwd=ROOT, env=env,
+                    capture_output=True, text=True, timeout=8, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(
+                    (run_dir / "status.txt").read_text(encoding="utf-8").strip(),
+                    "KAGGLE_STATUS_FAILED",
+                )
+                self.assertIn(poll_status, (run_dir / "kaggle_status.log").read_text(encoding="utf-8"))
+                self.assertFalse(push_marker.exists(), result.stdout)
+                self.assertFalse((run_dir / "kaggle_push.log").exists())
+
+
     def test_genuine_missing_kernel_is_pushed_once(self):
         """An unambiguous 404 permits one first creation, then monitors output."""
         script = launch_shell_script()
