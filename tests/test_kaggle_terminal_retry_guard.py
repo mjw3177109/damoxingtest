@@ -13,6 +13,12 @@ WORKFLOW = ROOT / ".github" / "workflows" / "daily-gpt2-training.yml"
 
 
 class TerminalKaggleRetryGuardTests(unittest.TestCase):
+    def test_preserves_deployed_non_top_of_hour_daily_schedule(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn('cron: "17 1 * * *"', workflow)
+        self.assertNotIn('cron: "0 1 * * *"', workflow)
+        self.assertIn("cancel-in-progress: false", workflow)
+
     def test_terminal_failure_requires_review_instead_of_gpu_push(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         marker = 'KernelWorkerStatus\\.(ERROR|FAILED|CANCELLED)'
