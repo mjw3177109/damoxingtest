@@ -211,7 +211,7 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
             ("429 Too Many Requests", 1),
             ("API rate limit exceeded", 1),
             ("429 Too Many Requests", 0),
-            ("KernelWorkerStatus.COMPLETE\\n429 Too Many Requests", 0),
+            ("KernelWorkerStatus.COMPLETE\n429 Too Many Requests", 0),
         ):
             with self.subTest(poll_status=poll_status), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
