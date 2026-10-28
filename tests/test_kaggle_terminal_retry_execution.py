@@ -92,6 +92,8 @@ class TerminalRetryShellExecutionTests(unittest.TestCase):
             ("unexpected kernel response", 0),
             ("403 Forbidden", 1),
             ("API rate limit exceeded", 1),
+            ("403 Forbidden: user not found (404)", 1),
+            ("429 API rate limit exceeded: kernel not found", 1),
         ):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
