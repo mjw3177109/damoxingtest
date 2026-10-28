@@ -160,8 +160,11 @@ jobs:
               FINAL="RUNNING"
               echo "Existing kernel is active; monitoring it without duplicate submission."
             elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
-              NEED_PUSH="true"
-              echo "Existing kernel has a terminal failure; submitting a fresh attempt."
+              # A terminal failure is not authorization to spend more GPU.
+              # Require independent review before any future retry.
+              echo "KAGGLE_RETRY_REQUIRES_REVIEW" > "$RUN_DIR/status.txt"
+              echo "Existing kernel failed or was cancelled; refusing automatic GPU retry."
+              exit 0
             else
               echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
               echo "Status response was not a recognized Kaggle kernel state; refusing duplicate submission."
