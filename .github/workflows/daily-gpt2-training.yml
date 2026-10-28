@@ -208,7 +208,12 @@ jobs:
               if echo "$STATUS" | grep -Eqi '(^|[^0-9])(401|403|429)([^0-9]|$)|Forbidden|Unauthorized|Permission denied|rate limit|Too Many Requests'; then
                 FINAL="KAGGLE_STATUS_FAILED"; break
               fi
-              if [[ "$STATUS_CODE" -eq 0 ]] && echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.COMPLETE|Status: COMPLETE|^COMPLETE
+              if [[ "$STATUS_CODE" -eq 0 ]] && echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.COMPLETE|Status: COMPLETE|^COMPLETE$'; then
+                FINAL="COMPLETE"; break
+              fi
+              if echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
+                FINAL="KAGGLE_STATUS_FAILED"; break
+              fi
               sleep 60
             done
           fi
