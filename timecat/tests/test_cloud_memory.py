@@ -1,7 +1,9 @@
 """V2 cloud memory tests; fake remote is isolated and contains no user data."""
+import base64
 import json
 import tempfile
 import unittest
+import time
 from pathlib import Path
 from timecat.cloud_memory import MemoryStore, SupabaseMemoryClient, synchronize, SyncConflict
 
@@ -83,6 +85,23 @@ class CloudMemoryTests(unittest.TestCase):
     def test_missing_jwt_fails_closed(self):
         with self.assertRaises(ValueError):
             SupabaseMemoryClient("https://example.supabase.co","public","")
+    def test_service_role_token_rejected(self):
+        def token(role):
+            payload={"role":role,"sub":"00000000-0000-4000-8000-000000000001",
+                     "exp":int(time.time())+3600}
+            mid=base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+            return "e30."+mid+".signature"
+        with self.assertRaises(ValueError):
+            SupabaseMemoryClient("https://example.supabase.co","public",token("service_role"))
+        self.assertIsNotNone(SupabaseMemoryClient(
+            "https://example.supabase.co","public",token("authenticated"),
+            requester=lambda *args: []))
+    def test_expired_token_rejected(self):
+        payload={"role":"authenticated","sub":"00000000-0000-4000-8000-000000000001",
+                 "exp":int(time.time())-60}
+        mid=base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+        with self.assertRaises(ValueError):
+            SupabaseMemoryClient("https://example.supabase.co","public","e30."+mid+".sig")
     def test_approval_after_local_unsynced(self):
         mid=self.one.propose("lesson","tested rule","test")
         self.one.review(mid,True)
