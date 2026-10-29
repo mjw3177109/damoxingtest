@@ -1,0 +1,27 @@
+name: TimeCat Static Preflight
+on:
+  pull_request:
+    paths:
+      - "timecat/**"
+      - "docs/TIMECAT_LIFE_SYSTEM_V1.md"
+      - ".github/workflows/timecat-static-preflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-timecat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile and test TimeCat (CPU only, no Kaggle)
+        run: |
+          python -m compileall -q timecat
+          python -m unittest discover -s timecat/tests -v
+          python -m timecat.cli --db /tmp/timecat-test.sqlite init
+          python -m timecat.cli --db /tmp/timecat-test.sqlite status
