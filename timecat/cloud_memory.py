@@ -5,10 +5,12 @@ Never supply a service-role key here. Do not use this module for public GitHub l
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
 import sqlite3
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -167,6 +169,21 @@ class SupabaseMemoryClient:
             raise ValueError("missing publishable key or user access JWT")
         if publishable_key == user_access_token:
             raise ValueError("an authenticated user JWT is required separately")
+        # Local check is fail-closed only. Supabase still verifies the JWT signature.
+        # Reject service_role JWTs, since they bypass RLS and could leak other users' data.
+        try:
+            parts = user_access_token.split(".")
+            if len(parts) != 3:
+                raise ValueError("expected JWT")
+            body = parts[1] + "=" * (-len(parts[1]) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(body))
+            if claims.get("role") != "authenticated":
+                raise ValueError("not an authenticated user JWT")
+            uuid.UUID(str(claims["sub"]))
+            if claims.get("is_anonymous") is True or int(claims.get("exp", 0)) <= int(time.time()):
+                raise ValueError("anonymous or expired JWT")
+        except (KeyError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("valid, non-anonymous authenticated user JWT required") from None
         self.url = url + "/rest/v1/timecat_memory_v2"
         self.key = publishable_key
         self.jwt = user_access_token
