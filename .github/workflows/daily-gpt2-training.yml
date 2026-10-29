@@ -254,6 +254,15 @@ jobs:
           run_dir = Path(os.environ["RUN_DIR"])
           statuses = sorted(run_dir.joinpath("kaggle_output").rglob("training_status.json"))
           reasons = []
+          # An adopted remote kernel may belong to a different code/data snapshot.
+          # Even plausible metrics and samples cannot pass the current-run gate.
+          source_unverified = (
+              (run_dir / "status.txt").is_file()
+              and (run_dir / "status.txt").read_text(encoding="utf-8").strip()
+              == "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED"
+          )
+          if source_unverified:
+              reasons.append("Existing Kaggle kernel provenance unverified; quality evidence cannot be attributed to this run.")
           metrics = {}
           samples = []
           status = {}
@@ -304,7 +313,8 @@ jobs:
           gate = {
               "checked_at_utc": datetime.now(timezone.utc).isoformat(),
               "run_id": os.environ.get("GITHUB_RUN_ID"),
-              "candidate_status": "skipped_no_changes" if status.get("skipped_no_changes") else status.get("status", "missing"),
+              "candidate_status": "source_unverified" if source_unverified else ("skipped_no_changes" if status.get("skipped_no_changes") else status.get("status", "missing")),
+              "existing_kernel_provenance_unverified": source_unverified,
               "evidence_reused": bool(status.get("skipped_no_changes")),
               "automated_precheck_passed": automated_precheck_passed,
               "human_review_status": "pending",
