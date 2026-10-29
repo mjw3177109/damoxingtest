@@ -27,7 +27,10 @@
     "eval_data_sha256": "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f",
     "training_recipe_sha256": "34b77ea554cbdd07a1fd54c1443734b2d963f4f991211d606cc2b88a650e4ba0",
     "base_model_commit": "c2c0249d8a2731f269414cc3b22dff021f8e07a3",
-    "adapter_weight_sha256": "not_verified_in_this_run"
+    "adapter_weight_sha256": "not_verified_in_this_run",
+    "historical_run12_adapter_sha256": "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c",
+    "historical_run12_adapter_sha256_source": "reports/2026-10-25/adapter-artifact-provenance-audit-20261025-1400.md",
+    "historical_weight_hash_rechecked_today": false
   },
   "lesson_proposal": {
     "status": "pending_human_review",
