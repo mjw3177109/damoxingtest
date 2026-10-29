@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "owner": "TimeCat project",
+  "current_stage": "V1 identity and verified-memory scaffolding",
+  "long_term": [
+    {
+      "id": "G1",
+      "goal": "跨会话可追溯记忆",
+      "evidence": "能重启恢复并检索经审核记忆",
+      "status": "in_progress"
+    },
+    {
+      "id": "G2",
+      "goal": "可靠中文对话",
+      "evidence": "固定盲测问题中有意义回复率达标且人工审核通过",
+      "status": "blocked_by_current_model_quality"
+    },
+    {
+      "id": "G3",
+      "goal": "有限自主行动",
+      "evidence": "仅在白名单和授权下执行，有审计与回滚",
+      "status": "planned"
+    },
+    {
+      "id": "G4",
+      "goal": "可验证的模型进化",
+      "evidence": "同口径盲测、回归测试、人工审核并保留旧模型",
+      "status": "planned"
+    }
+  ],
+  "phases": [
+    "V1身份与事件记录",
+    "V2记忆检索与反思",
+    "V3可用的对话模型与评估",
+    "V4受限工具行动",
+    "V5受控训练与晋级"
+  ]
+}
