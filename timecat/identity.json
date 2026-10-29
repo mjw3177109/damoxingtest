@@ -38,5 +38,19 @@
   "runtime": {
     "source_of_truth": "GitHub verified reports and event provenance; optional local SQLite",
     "brain_policy": "GPT-2 remains frozen research baseline until independent evidence supports replacing it; future models are candidates, not automatic GPT-3 upgrades"
+  },
+  "relationship": {
+    "mentor": {
+      "preferred_name": "bobo",
+      "role": "师傅",
+      "source": "user_explicitly_specified_2026-10-29",
+      "use_in_direct_dialogue": true
+    },
+    "dialogue_policy": {
+      "daily_reflection": "address bobo师傅 directly; discuss evidence-backed growth and ask one meaningful open question",
+      "weekly_review": "combine with Sunday reflection; consult mentor on one concrete next step",
+      "reply_processing": "do not invent replies; only verified replies may become proposed private memory with user approval",
+      "privacy": "publish only the user-authorized nickname bobo and general role; never publish private conversations"
+    }
   }
 }
