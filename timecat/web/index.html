@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TimeCat · 私人记忆</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color:#e9edff;background:#0d1224}
+*{box-sizing:border-box}body{margin:0}main{max-width:940px;margin:3rem auto;padding:0 1.2rem}
+header{padding-bottom:1.3rem;border-bottom:1px solid #343c56}h1{font-size:2rem;margin:.3rem 0}
+p{color:#aab4d0;line-height:1.7}section{margin-top:1.3rem;background:#19223a;border:1px solid #394564;border-radius:16px;padding:1.35rem}
+label{display:block;margin:.8rem 0 .35rem;color:#cbd4e9}input,textarea,select{display:block;width:100%;padding:.8rem .9rem;background:#10182c;color:#f6f7ff;border:1px solid #51607e;border-radius:8px;font:inherit}
+textarea{min-height:94px;resize:vertical}button{border:0;border-radius:8px;background:#647dfe;color:white;font:inherit;font-weight:600;padding:.7rem 1.1rem;cursor:pointer;margin:.6rem .5rem .1rem 0}
+button.secondary{background:#394766}button.danger{background:#8f4167}button:disabled{opacity:.5;cursor:default}
+small,.muted{color:#9fabc8}.inline{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+.item{border-top:1px solid #3a4862;padding:1rem 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.item p{margin:.3rem 0;color:#e5ebff}.item small{display:block;margin:.25rem 0}
+#notice{padding:0.8rem;border-radius:8px;background:#273650;white-space:pre-wrap;overflow-wrap:anywhere;min-height:2.8rem}
+[hidden]{display:none!important}.count{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<main>
+<header><div class="muted">🐱 TimeCat · bobo师傅的私人记忆空间</div><h1>记住真正重要的事</h1>
+<p>只保存你主动提交的内容。每条记忆先作为「待审核」，批准后才进入可召回的长期记忆。连接的是 TimeCat 专属 Supabase 数据库，而非公开 GitHub。</p></header>
+<section id="login-section">
+<h2>登录私人记忆</h2>
+<label for="email">TimeCat Auth 邮箱</label><input id="email" autocomplete="username" type="email" required>
+<label for="password">TimeCat Auth 密码</label><input id="password" autocomplete="current-password" type="password" required>
+<button id="login">登录 TimeCat</button>
+<p><small>账号密码只发送到 Supabase Auth HTTPS 接口，不存入浏览器 localStorage、GitHub 或 ChatGPT。刷新页面后需重新登录。</small></p>
+</section>
+<section id="memory-section" hidden>
+<div class="inline"><h2 style="margin-right:auto">私人记忆</h2><button class="secondary" id="reload">重新从云端读取</button><button class="secondary" id="logout">退出登录</button></div>
+<p id="who" class="muted"></p>
+<form id="proposal">
+<label for="kind">记忆分类</label>
+<select id="kind"><option value="preference">师傅指导</option><option value="lesson">经验教训</option><option value="goal">成长目标</option><option value="fact">确认事实</option><option value="event">真实经历</option><option value="experiment">实验结论</option></select>
+<label for="content">希望 TimeCat 记住的内容</label><textarea id="content" required maxlength="4000" placeholder="例如：师傅希望每次发现错误时，TimeCat 先定位根因，再最小修复并验证。"></textarea>
+<label for="source">来源（用于以后核实）</label><input id="source" value="bobo师傅在私人记忆入口明确提交" maxlength="500" required>
+<button type="submit">提交为待审核记忆</button>
+</form>
+<h3>已保存的云端记忆 <span id="total" class="count"></span></h3>
+<div class="inline"><label><input type="checkbox" id="approved-only" style="display:inline;width:auto"> 只显示已批准的记忆</label></div>
+<div id="list"></div>
+</section>
+<section aria-live="polite"><div id="notice">准备就绪：等待你登录。</div></section>
+<p class="muted"><small>重要：此入口用于真实、可审核的跨浏览器云端记忆；ChatGPT 每小时与每日定时任务尚未取得普通用户授权，不能自动读取这里的私人记录。不要在此填写密码、Token 等机密作为记忆。</small></p>
+</main>
+<script>
+(function(){
+"use strict";
+const project="https://svlxyknltmeninipjrxo.supabase.co";
+const apiKey="sb_publishable_c9Z7HrKCPPypvwI7BkYl-g_JkL_N2en";
+let session=null;
+let cached=[];
+const $=id=>document.getElementById(id);
+const notice=message=>{$("notice").textContent=message;};
+function validSession(){if(!session||!session.access_token)throw new Error("请先登录");}
+async function auth(path,method,body,token){
+ const h={"apikey":apiKey,"Content-Type":"application/json","Accept":"application/json"};
+ if(token)h.Authorization="Bearer "+token;
+ const r=await fetch(project+"/auth/v1"+path,{method,headers:h,body:body?JSON.stringify(body):undefined,cache:"no-store"});
+ const result=await r.json().catch(()=>({}));
+ if(!r.ok)throw new Error("Supabase Auth "+r.status+"：请检查账号、密码或邮箱验证状态");
+ return result;
+}
+async function login(){
+ $("login").disabled=true;
+ try{
+  const email=$("email").value.trim(),password=$("password").value;
+  if(!email||!password)throw new Error("请输入 TimeCat Auth 邮箱与密码");
+  const response=await auth("/token?grant_type=password","POST",{email,password});
+  if(!response.access_token||!response.refresh_token)throw new Error("登录没有返回完整会话");
+  const user=await auth("/user","GET",null,response.access_token);
+  if(!user.id||!response.user||user.id!==response.user.id)throw new Error("登录身份核验失败");
+  session={access_token:response.access_token,refresh_token:response.refresh_token,user_id:user.id};
+  $("password").value="";$("login-section").hidden=true;$("memory-section").hidden=false;
+  $("who").textContent="已使用 TimeCat Auth 账号登录。记忆按你的用户身份隔离。";
+  notice("登录成功，正在同步云端记忆……");
+  await reload();
+ }catch(err){notice("登录失败："+err.message);}finally{$("login").disabled=false;}
+}
+async function refresh(){
+ validSession();
+ const data=await auth("/token?grant_type=refresh_token","POST",{refresh_token:session.refresh_token});
+ if(!data.access_token||!data.refresh_token||data.user?.id!==session.user_id){logout();throw new Error("会话续期失败，请重新登录");}
+ session.access_token=data.access_token;session.refresh_token=data.refresh_token;
+}
+async function request(path,method,body,retry=true){
+ validSession();
+ const h={"apikey":apiKey,"Authorization":"Bearer "+session.access_token,"Content-Type":"application/json",
+ "Accept":"application/json","Prefer":"return=representation"};
+ const r=await fetch(project+"/rest/v1/timecat_memory_v2"+path,{method,headers:h,body:body?JSON.stringify(body):undefined,cache:"no-store"});
+ if(r.status===401&&retry){await refresh();return request(path,method,body,false);}
+ const result=await r.json().catch(()=>[]);
+ if(!r.ok)throw new Error("记忆接口 HTTP "+r.status+"：请确认项目用户权限和 RLS，勿尝试管理员密钥");
+ return result;
+}
+function logout(){
+ session=null;cached=[];$("password").value="";$("memory-section").hidden=true;$("login-section").hidden=false;
+ $("list").replaceChildren();notice("已退出；此页面不会保存密码或会话令牌。");
+}
+function render(){
+ const list=$("list");list.replaceChildren();
+ const rows=$("approved-only").checked?cached.filter(x=>x.status==="approved"):cached;
+ $("total").textContent="（"+rows.length+" 条）";
+ if(!rows.length){const p=document.createElement("p");p.textContent="暂无符合条件的记忆。";list.appendChild(p);}
+ for(const item of rows){
+  const div=document.createElement("div");div.className="item";
+  const header=document.createElement("small");header.textContent="分类 "+item.kind+" · "+(item.status==="proposed"?"待审核":item.status==="approved"?"已批准":"已拒绝")+" · revision "+item.revision;
+  const text=document.createElement("p");text.textContent=item.content;
+  const source=document.createElement("small");source.textContent="来源："+item.source;
+  div.append(header,text,source);
+  if(item.status==="proposed"){
+   for(const [decision,title,cls] of [["approved","批准长期记忆","secondary"],["rejected","拒绝此记忆","danger"]]){
+    const btn=document.createElement("button");btn.className=cls;btn.textContent=title;
+    btn.addEventListener("click",()=>review(item,decision));div.append(btn);
+   }
+  }
+  list.appendChild(div);
+ }
+}
+async function reload(){
+ try{const data=await request("?select=id,kind,content,source,status,revision,created_at,updated_at&order=created_at.desc&limit=200","GET");
+  if(!Array.isArray(data))throw new Error("云端数据格式异常");
+  cached=data;render();notice("已从云端读取 "+data.length+" 条记忆，未自动批准任何内容。");
+ }catch(err){notice("云端读取失败："+err.message);}
+}
+async function propose(event){
+ event.preventDefault();
+ const content=$("content").value.trim(),source=$("source").value.trim();
+ if(!content||!source){notice("请输入记忆正文和来源");return;}
+ try{
+  const data=await request("","POST",{id:crypto.randomUUID(),kind:$("kind").value,content,source,status:"proposed"});
+  if(!Array.isArray(data)||data.length!==1)throw new Error("云端没有确认写入");
+  $("content").value="";await reload();notice("待审核记忆已写入云端，请在列表中审核。");
+ }catch(err){notice("记忆写入失败："+err.message);}
+}
+async function review(item,decision){
+ try{
+  const query="?id=eq."+encodeURIComponent(item.id)+"&revision=eq."+encodeURIComponent(item.revision)+"&status=eq.proposed";
+  const data=await request(query,"PATCH",{status:decision,revision:item.revision+1,updated_at:new Date().toISOString()});
+  if(!Array.isArray(data)||data.length!==1)throw new Error("版本冲突或记忆已被审核；请刷新后重试");
+  await reload();notice(decision==="approved"?"这条记忆已通过审核并保存在云端。":"这条记忆已被拒绝。");
+ }catch(err){notice("审核失败："+err.message);}
+}
+$("login").addEventListener("click",login);
+$("password").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();login();}});
+$("logout").addEventListener("click",logout);
+$("reload").addEventListener("click",reload);
+$("proposal").addEventListener("submit",propose);
+$("approved-only").addEventListener("change",render);
+})();
+</script>
+</body>
+</html>
