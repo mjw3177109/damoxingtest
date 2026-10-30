@@ -21,7 +21,40 @@ class FakeTokenizer:
                 "token_type_ids": FakeTensor()}
 
 
+class RecordingTokenizer(FakeTokenizer):
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, text, return_tensors=None, add_special_tokens=None):
+        self.calls.append((return_tensors, add_special_tokens))
+        return super().__call__(text, return_tensors)
+
+
 class TokenTypeParityTests(unittest.TestCase):
+    def test_train_exact_disables_special_tokens_and_removes_types(self):
+        tokenizer = RecordingTokenizer()
+        result = module.make_inputs(tokenizer, "hello", "train_exact")
+        self.assertEqual(set(result), {"input_ids", "attention_mask"})
+        self.assertEqual(tokenizer.calls, [("pt", False)])
+
+    def test_historical_train_parity_still_uses_default_tokenizer_behavior(self):
+        tokenizer = RecordingTokenizer()
+        module.make_inputs(tokenizer, "hello", "train_parity")
+        self.assertEqual(tokenizer.calls, [("pt", None)])
+
+    def test_train_exact_accepts_tokenizers_without_token_type_ids(self):
+        class NoTypes(RecordingTokenizer):
+            def __call__(self, text, return_tensors=None, add_special_tokens=None):
+                result = super().__call__(text, return_tensors, add_special_tokens)
+                result.pop("token_type_ids")
+                return result
+        result = module.make_inputs(NoTypes(), "hello", "train_exact")
+        self.assertEqual(set(result), {"input_ids", "attention_mask"})
+
+    def test_consumers_use_exact_training_encoding(self):
+        for filename in ("run12_readability_review.py", "run12_direct_answer_generation.py"):
+            content = (TOOLS / filename).read_text(encoding="utf-8")
+            self.assertIn('make_inputs(tokenizer, prompt, "train_exact")', content)
     def test_original_preserves_token_type_ids(self):
         self.assertIn("token_type_ids", module.make_inputs(FakeTokenizer(), "hello", "original"))
 

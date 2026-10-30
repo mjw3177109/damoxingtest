@@ -8,6 +8,7 @@ import math
 import os
 import random
 import shutil
+import subprocess
 import sys
 import time
 import traceback
@@ -67,6 +68,49 @@ def training_recipe_hash():
     return digest.hexdigest()
 
 
+def source_git_commit_sha():
+    """Read the exact Git commit from the checkout used for training."""
+    root = Path(__file__).resolve().parent.parent
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--verify", "HEAD"],
+            check=True, capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None
+    commit = result.stdout.strip().lower()
+    if len(commit) != 40 or any(char not in "0123456789abcdef" for char in commit):
+        return None
+    return commit
+
+
+def reusable_training_config_matches(previous, args):
+    """Reject stale evidence when a training-affecting CLI setting differs.
+
+    The pre-submit guard uses the documented defaults; a direct CLI caller
+    may override them. A requested starting Adapter must never reuse a
+    base-model run. Missing provenance is a mismatch (fail closed).
+    """
+    if getattr(args, "adapter_path", None):
+        return False
+    fields = (
+        ("model_name", "model_name", MODEL_DEFAULT),
+        ("seed", "seed", SEED_DEFAULT),
+        ("max_length", "max_length", 256),
+        ("epochs", "epochs", 3),
+        ("learning_rate", "learning_rate", 2e-4),
+        ("batch_size", "per_device_train_batch_size", 2),
+        ("gradient_accumulation_steps", "gradient_accumulation_steps", 2),
+        ("lora_rank", "lora_rank", 8),
+        ("lora_alpha", "lora_alpha", 16),
+        ("lora_dropout", "lora_dropout", 0.05),
+    )
+    return all(
+        previous.get(metadata_key) == getattr(args, arg_key, default)
+        for arg_key, metadata_key, default in fields
+    )
+
+
 def find_reusable_run(args):
     if getattr(args, "force_retrain", False):
         return None
@@ -91,6 +135,8 @@ def find_reusable_run(args):
             if previous.get("eval_data_sha256") != eval_hash:
                 continue
             if previous.get("training_recipe_sha256") != recipe_hash:
+                continue
+            if not reusable_training_config_matches(previous, args):
                 continue
             run_dir = metadata_path.parent
             status_path = run_dir / "training_status.json"
@@ -207,6 +253,7 @@ def run(args):
         "model_name": args.model_name,
         "training_method": "LoRA supervised causal language-model fine-tuning",
         "training_recipe_sha256": training_recipe_hash(),
+        "source_git_commit_sha": source_git_commit_sha(),
         "project_principles": PROJECT_PRINCIPLES,
         "seed": args.seed,
         "max_length": args.max_length,
@@ -428,7 +475,7 @@ def run(args):
     samples = []
     device = next(trainer.model.parameters()).device
     for prompt in prompts:
-        inputs = tokenizer(prompt, return_tensors="pt").to(device)
+        inputs = tokenizer(prompt, add_special_tokens=False, return_tensors="pt").to(device)
         with torch.no_grad():
             generated = trainer.model.generate(
                 **inputs,
@@ -455,6 +502,7 @@ def run(args):
         "training_data_sha256": corpus_sha256,
         "eval_data_sha256": eval_sha256,
         "training_recipe_sha256": training_recipe_hash(),
+        "source_git_commit_sha": metadata["source_git_commit_sha"],
         "resolved_model_commit": resolved_model_commit,
         "starting_adapter_loaded": starting_adapter_loaded,
         "starting_adapter_sha256": starting_adapter_sha256,

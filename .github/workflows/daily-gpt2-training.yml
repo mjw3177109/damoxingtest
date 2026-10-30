@@ -4,6 +4,17 @@ on:
   schedule:
     - cron: "17 1 * * *" # 09:17 Asia/Shanghai; avoid high-load :00 scheduling
   workflow_dispatch:
+    inputs:
+      approve_same_data_retrain:
+        description: "Approve one same-data retrain after recipe/config review; remote Kaggle safety checks remain active"
+        type: boolean
+        required: false
+        default: false
+      approve_failed_kernel_retry:
+        description: "Allow one reviewed retry if the existing Kaggle kernel is in a terminal failed state"
+        type: boolean
+        required: false
+        default: false
   push:
     branches:
       - main
@@ -96,25 +107,31 @@ jobs:
       - name: Skip unchanged training before Kaggle submission
         id: reuse_guard
         if: steps.preflight.outputs.kaggle_ready == 'true'
+        env:
+          APPROVE_SAME_DATA_RETRAIN: ${{ github.event_name == 'workflow_dispatch' && inputs.approve_same_data_retrain || false }}
         shell: bash
         run: |
           set -euo pipefail
+          EXTRA_ARGS=()
+          if [[ "$APPROVE_SAME_DATA_RETRAIN" == "true" ]]; then
+            EXTRA_ARGS+=(--approve-same-data-retrain)
+          fi
           python tools/pre_submit_reuse_guard.py \
             --run-dir "$RUN_DIR" \
-            --github-output "$GITHUB_OUTPUT"
+            --github-output "$GITHUB_OUTPUT" "${EXTRA_ARGS[@]}"
 
       - name: Install Kaggle CLI
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.blocked != 'true'
         run: python -m pip install --upgrade kaggle
 
       - name: Prepare kernel metadata
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.blocked != 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
         run: python scripts/prepare_kaggle_kernel.py --username "$KAGGLE_USERNAME" --slug "$KAGGLE_KERNEL_SLUG"
 
       - name: Validate Kaggle title and kernel ID
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.blocked != 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
         shell: bash
@@ -132,8 +149,9 @@ jobs:
           PY
 
       - name: Launch, monitor, and download
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.blocked != 'true'
         env:
+          APPROVE_FAILED_KERNEL_RETRY: ${{ github.event_name == 'workflow_dispatch' && inputs.approve_failed_kernel_retry || false }}
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN || secrets.shipin }}
@@ -157,16 +175,37 @@ jobs:
               NEED_PUSH="true"
               echo "Existing kernel is complete; submitting a fresh version to train the current repository code."
             elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(RUNNING|QUEUED|PENDING)|Status: (RUNNING|QUEUED|PENDING)'; then
-              FINAL="RUNNING"
-              echo "Existing kernel is active; monitoring it without duplicate submission."
+              # A running kernel may belong to another Actions run or manual submission.
+              # Do not re-label its later outputs as training performed by this run.
+              echo "BLOCKED_EXISTING_KERNEL_ACTIVE" > "$RUN_DIR/status.txt"
+              echo "Existing kernel is active; no new submission and no attribution of its outputs to this run."
+              exit 0
             elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
-              NEED_PUSH="true"
-              echo "Existing kernel has a terminal failure; submitting a fresh attempt."
+              if [[ "$APPROVE_FAILED_KERNEL_RETRY" == "true" ]]; then
+                NEED_PUSH="true"
+                echo "Explicit dispatch approval received for one reviewed retry of a failed kernel."
+              else
+                echo "BLOCKED_FAILED_KERNEL_REQUIRES_APPROVAL" > "$RUN_DIR/status.txt"
+                echo "Existing kernel failed; automatic retry refused pending review and manual approval."
+                exit 0
+              fi
             else
               echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
               echo "Status response was not a recognized Kaggle kernel state; refusing duplicate submission."
               exit 0
             fi
+          elif echo "$EXISTING_STATUS" | grep -Eqi '401|403|unauthorized|forbidden|permission denied'; then
+            # Some authorization errors also contain "not found" to avoid
+            # revealing a private kernel. Never treat them as a safe 404.
+            echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
+            echo "Kaggle authorization was not verified; refusing GPU submission."
+            exit 0
+          elif echo "$EXISTING_STATUS" | grep -Eqi '429|too many requests|rate.?limit|5[0-9][0-9]|internal server error|service unavailable|bad gateway|gateway timeout'; then
+            # Rate limits and upstream failures may contain a misleading
+            # "not found" phrase. They are not proof that the kernel is absent.
+            echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
+            echo "Kaggle status is rate-limited or unavailable; refusing GPU submission."
+            exit 0
           elif echo "$EXISTING_STATUS" | grep -Eqi '404|Not Found|not found|does not exist|No such kernel'; then
             NEED_PUSH="true"
             echo "No existing kernel found at the canonical ID; creating the first run."
@@ -228,7 +267,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json, math, re, os
+          import json, math, re, os, hashlib
           from datetime import datetime, timezone
           from pathlib import Path
           run_dir = Path(os.environ["RUN_DIR"])
@@ -237,6 +276,14 @@ jobs:
           metrics = {}
           samples = []
           status = {}
+          metadata = {}
+          # Files alone cannot establish that THIS Actions run completed Kaggle.
+          # A blocked/failed run may still contain stale or partial outputs.
+          workflow_status_path = run_dir / "status.txt"
+          workflow_status = (workflow_status_path.read_text(encoding="utf-8").strip()
+                             if workflow_status_path.is_file() else "MISSING")
+          if workflow_status != "COMPLETE":
+              reasons.append("Current GitHub run has no verified COMPLETE Kaggle status")
           adapter_dir = None
           if not statuses:
               reasons.append("training_status.json missing from Kaggle output")
@@ -244,7 +291,12 @@ jobs:
               root = statuses[0].parent
               status = json.loads(statuses[0].read_text(encoding="utf-8"))
               metrics_path = root / "metrics.json"
+              metadata_path = root / "run_metadata.json"
               samples_path = root / "samples.json"
+              if metadata_path.is_file():
+                  metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+              else:
+                  reasons.append("run_metadata.json missing")
               candidate_adapter = root / "adapter"
               if metrics_path.is_file():
                   metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
@@ -262,6 +314,44 @@ jobs:
               reasons.append("No new training candidate was created; prior evidence was reused.")
           if status.get("status") != "completed":
               reasons.append("training_status is not completed")
+          # A remote COMPLETE result can belong to a different code/data version.
+          # Compare the downloaded evidence to the checked-out sources of THIS run.
+          # These hashes are generated by scripts/train_gpt2_lora.py itself.
+          if statuses and not status.get("skipped_no_changes"):
+              for field, relative in (
+                  ("training_data_sha256", "data/safety_humanity_train_v2.jsonl"),
+                  ("eval_data_sha256", "data/safety_humanity_eval_v1.jsonl"),
+              ):
+                  source = Path(relative)
+                  if not source.is_file():
+                      reasons.append(f"Current checkout missing {relative}; provenance unverified")
+                  else:
+                      expected = hashlib.sha256(source.read_bytes()).hexdigest()
+                      if metrics.get(field) != expected or metadata.get(field) != expected:
+                          reasons.append(f"{field} does not match current checkout in metrics/metadata")
+              recipe = hashlib.sha256()
+              recipe_files = ("scripts/train_gpt2_lora.py", "kaggle/gpt2_training.ipynb",
+                              "requirements-kaggle.txt")
+              for relative in recipe_files:
+                  source = Path(relative)
+                  recipe.update(relative.encode("utf-8"))
+                  if source.is_file():
+                      recipe.update(source.read_bytes())
+                  else:
+                      reasons.append(f"Current checkout missing {relative}; recipe unverified")
+                      recipe.update(b"<missing>")
+              expected_recipe = recipe.hexdigest()
+              if (metrics.get("training_recipe_sha256") != expected_recipe
+                      or metadata.get("training_recipe_sha256") != expected_recipe):
+                  reasons.append("training_recipe_sha256 does not match current checkout")
+              # Kaggle notebook clones main independently. A matching recipe is not
+              # proof it cloned the exact Git commit that triggered this run.
+              expected_git_sha = os.environ.get("GITHUB_SHA", "").strip().lower()
+              if not re.fullmatch(r"[0-9a-f]{40}", expected_git_sha):
+                  reasons.append("Current GitHub SHA missing or invalid; source provenance unverified")
+              elif (metadata.get("source_git_commit_sha") != expected_git_sha
+                    or metrics.get("source_git_commit_sha") != expected_git_sha):
+                  reasons.append("source_git_commit_sha does not match current GitHub run SHA in metrics/metadata")
           improvement = metrics.get("eval_loss_improvement_pct")
           if not isinstance(improvement, (int, float)) or not math.isfinite(float(improvement)) or improvement <= 0:
               reasons.append("fixed-holdout validation loss did not improve")
@@ -294,7 +384,9 @@ jobs:
               "generation_sample_count": len(outputs),
               "eval_loss_improvement_pct": improvement,
               "training_data_sha256": metrics.get("training_data_sha256"),
-              "eval_data_sha256": metrics.get("eval_data_sha256")
+              "eval_data_sha256": metrics.get("eval_data_sha256"),
+              "source_git_commit_sha": metadata.get("source_git_commit_sha"),
+              "expected_github_sha": os.environ.get("GITHUB_SHA")
           }
           (run_dir / "quality_gate.json").write_text(json.dumps(gate, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
           print("PROMOTION_REJECTED; candidate archived for independent review:", json.dumps(reasons, ensure_ascii=False))

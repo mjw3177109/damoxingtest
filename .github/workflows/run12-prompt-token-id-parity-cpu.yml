@@ -1,0 +1,63 @@
+name: GPT-2 Run 12 Prompt Token ID Parity CPU
+
+# Push paths compare only new changes, unlike pull_request paths over entire PR.
+# No GPU, no Kaggle submission, no model inference, no automatic promotion.
+on:
+  push:
+    branches: [fix/reuse-training-config-20261025-22]
+    paths:
+      - "tools/audit_prompt_token_id_parity.py"
+      - "tests/test_prompt_token_id_parity.py"
+      - ".github/workflows/run12-prompt-token-id-parity-cpu.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gpt2-run12-prompt-token-id-parity-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile and run offline parity tests
+        run: |
+          python -m py_compile tools/audit_prompt_token_id_parity.py tests/test_prompt_token_id_parity.py
+          python -m unittest discover -s tests -p 'test_prompt_token_id_parity.py' -v
+      - name: Install pinned CPU tokenizer dependency
+        run: python -m pip install "transformers==4.46.3"
+      - name: Compare real Run 12 tokenizer ID sequences (10 fixed prompts)
+        run: |
+          python tools/audit_prompt_token_id_parity.py --output token_id_parity.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("token_id_parity.json").read_text(encoding="utf-8"))
+          assert r["source_training_run_id"] == 39921870784
+          assert r["prompt_count"] == 10
+          assert r["promotion_approved"] is False
+          assert len(r["per_prompt_aggregate"]) == 10
+          forbidden = {"prompt", "output", "token_ids", "text"}
+          assert not (forbidden & r.keys())
+          assert all(not (forbidden & row.keys()) for row in r["per_prompt_aggregate"])
+          print("PASS: pinned CPU-only token ID parity; no raw prompts, IDs, or promotion")
+          PY
+      - name: Upload aggregate-only audit Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run12-prompt-token-id-parity-${{ github.run_id }}
+          path: token_id_parity.json
+          if-no-files-found: warn
+          retention-days: 30

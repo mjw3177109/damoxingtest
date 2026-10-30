@@ -12,8 +12,14 @@ spec.loader.exec_module(module)
 
 
 class ReadabilityReviewTests(unittest.TestCase):
-    def test_safe_excerpt_retains_chinese(self):
-        self.assertEqual(module.safe_excerpt("您好，请先核实。"), "您好，请先核实。")
+    def test_safe_excerpt_never_exports_generated_text(self):
+        raw = "示例姓名甲某及示例家庭住址不应出现在公开 Artifact"
+        self.assertEqual(module.safe_excerpt(raw), "[REDACTED: raw output withheld]")
+        self.assertNotIn("甲某", module.safe_excerpt(raw))
+
+    def test_safe_excerpt_rejects_non_text(self):
+        with self.assertRaises(TypeError):
+            module.safe_excerpt(None)
 
     def test_safe_excerpt_redacts_email(self):
         self.assertIn("REDACTED", module.safe_excerpt("联系 foo@example.com"))
@@ -68,7 +74,7 @@ class ReadabilityReviewTests(unittest.TestCase):
 
     def test_valid_pair_summary(self):
         rows = [{"phase": p, "prompt_index": i, "punctuation_only": False,
-                 "safe_output_excerpt": "中文", "stop_reason_inferred": "eos"}
+                 "safe_output_excerpt": "[REDACTED: raw output withheld]", "contains_chinese": True, "stop_reason_inferred": "eos"}
                 for p in ("base", "candidate") for i in range(4)]
         result = module.summarize(rows)
         self.assertEqual(result["candidate"]["contains_chinese"], 4)

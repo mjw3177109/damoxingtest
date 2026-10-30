@@ -95,6 +95,15 @@ def main():
         report.append("- 模型与完整输出 Artifact： https://github.com/" + repository + "/actions/runs/" + run_id + "/artifacts")
     report.append("- Kaggle 任务状态： " + status)
     report.append("- 最终判定： **" + final_status + "**")
+    if final_status == "BLOCKED_SAME_DATA_RETRAIN_REQUIRES_APPROVAL":
+        report.append("- 本次训练动作：安全阻断；未提交 Kaggle Kernel，未执行 GPU 训练或评估。")
+        report.append("- 阻断原因：相同训练和验证数据存在历史完成记录，但当前配方或配置不满足精确复用条件。")
+    elif final_status == "BLOCKED_EXISTING_KERNEL_ACTIVE":
+        report.append("- 本次训练动作：检测到已有运行中或排队中的远端 Kernel；本次未提交新 Kernel，未执行新的训练或评估。")
+        report.append("- 归属说明：现有远端 Kernel 可能由其他 Actions Run 或手动提交启动，未经核对 Run/Kernel ID 和产物来源，不归入本次训练成果。")
+    elif final_status == "BLOCKED_FAILED_KERNEL_REQUIRES_APPROVAL":
+        report.append("- 本次训练动作：安全阻断；未提交新的 Kaggle Kernel，未执行新的 GPU 训练或评估。")
+        report.append("- 阻断原因：远端已有 Kernel 处于 ERROR、FAILED 或 CANCELLED；为避免无限失败重试，要求先审查真实日志。")
     if training_status.get("skipped_no_changes"):
         report.append("- 本次训练动作：跳过重复训练；复用已有指标与样例，未进行新的 GPU 参数更新。")
         report.append("- 复用来源： " + str(training_status.get("reused_from_run", "历史成功运行")))
@@ -145,7 +154,14 @@ def main():
         report.append("")
         report.append("## 整体评价")
         report.append("")
-        report.append("本次运行没有足够的实测指标支持模型质量结论。请先解决凭据、GPU、配额、网络或训练脚本问题，再重新运行。")
+        if final_status == "BLOCKED_SAME_DATA_RETRAIN_REQUIRES_APPROVAL":
+            report.append("本次由同数据重训审批保护主动阻断，没有新训练指标；不能将其误判为凭据、GPU 或网络故障。")
+        elif final_status == "BLOCKED_EXISTING_KERNEL_ACTIVE":
+            report.append("远端已有运行中的 Kernel，本次未提交新任务，也未核实该 Kernel 与当前代码、数据的对应关系；不能归因或宣称本次训练成功。")
+        elif final_status == "BLOCKED_FAILED_KERNEL_REQUIRES_APPROVAL":
+            report.append("远端 Kernel 已处于终止失败状态，本次主动阻断自动重试；没有新训练指标，不代表本轮再次训练失败。")
+        else:
+            report.append("本次运行没有足够的实测指标支持模型质量结论。请先解决凭据、GPU、配额、网络或训练脚本问题，再重新运行。")
 
     report.append("")
     report.append("## 候选模型晋级门槛")
@@ -190,6 +206,18 @@ def main():
     report.append("")
     if final_status == "SKIPPED_NO_CHANGES":
         report.append("本次训练集、评估集和训练方案与最近一次完整运行一致，因此跳过重复 GPU 训练。新增数据或训练方案发生变化后再启动新训练。")
+    elif final_status == "BLOCKED_SAME_DATA_RETRAIN_REQUIRES_APPROVAL":
+        report.append("1. 核对历史 Run 的数据哈希、训练配置、代码 SHA 与模型质量，不要将配方哈希变化直接视为必须重训。")
+        report.append("2. 确需同数据重训时，仅通过 workflow_dispatch 的 approve_same_data_retrain 明确审批；默认保持阻断。")
+        report.append("3. 审批后仍须检查 Kaggle Kernel 状态、并发和 GPU 配额，不能把审批或 Actions success 当作训练成功。")
+    elif final_status == "BLOCKED_EXISTING_KERNEL_ACTIVE":
+        report.append("1. 先核实远端 Kernel ID、版本、启动来源及状态；不要在其运行期间重复提交。")
+        report.append("2. 该 Kernel 结束后比对训练数据哈希、代码 SHA、日志、指标、样例及 Artifact；只有来源一致且质量门槛通过，才能单独归档为历史结果。")
+        report.append("3. 本次 GitHub Run 不得冒领现有远端任务的训练成果，模型晋级继续需要独立审核。")
+    elif final_status == "BLOCKED_FAILED_KERNEL_REQUIRES_APPROVAL":
+        report.append("1. 先核实远端失败 Kernel 的实际日志、数据与代码版本、错误根因，并完成最小修复及离线验证。")
+        report.append("2. 确需重试时，仅通过 workflow_dispatch 的 approve_failed_kernel_retry 明确审批一次；如同时涉及同数据重训，亦需 approve_same_data_retrain。")
+        report.append("3. 审批不等于训练成功；继续核查并发、GPU 配额、Artifact、质量门槛及可回滚版本。")
     elif final_status == "SUCCESS":
         report.append("1. 人工复核 samples.json，检查事实性、隐私、伤害风险、偏见和是否遵循指令。")
         report.append("2. 比较验证集指标与上一版本，不因单次 loss 变化就直接宣称模型进步。")

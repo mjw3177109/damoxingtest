@@ -1,12 +1,15 @@
 """Offline contract tests for the no-GPU, pre-submit reuse path."""
+import hashlib
 import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from pre_submit_reuse_guard import materialize_skip
+import pre_submit_reuse_guard as guard
+from pre_submit_reuse_guard import has_completed_same_data_run, materialize_skip
 
 
 class PreSubmitReuseTests(unittest.TestCase):
@@ -81,6 +84,120 @@ class PreSubmitReuseTests(unittest.TestCase):
         self.put("samples.json", [{"output": "..."}])
         with self.assertRaises(ValueError):
             materialize_skip(self.source, self.run, repo_root=self.root)
+
+
+class SameDataRetrainApprovalTests(unittest.TestCase):
+    """No-GPU fixtures for the guard that protects recipe-only changes."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.data = self.root / "data/train.jsonl"
+        self.holdout = self.root / "data/eval.jsonl"
+        self.data.parent.mkdir(parents=True)
+        self.data.write_text('{"instruction":"A","response":"B"}\n', encoding="utf-8")
+        self.holdout.write_text('{"instruction":"C","response":"D"}\n', encoding="utf-8")
+        self.source = self.root / "reports/2026-10-23/run-123"
+        self.source.mkdir(parents=True)
+        (self.source / "run_metadata.json").write_text(json.dumps({
+            "training_data_sha256": hashlib.sha256(self.data.read_bytes()).hexdigest(),
+            "eval_data_sha256": hashlib.sha256(self.holdout.read_bytes()).hexdigest(),
+            "training_recipe_sha256": "historical-recipe-sha",
+        }), encoding="utf-8")
+        self.status({"status": "completed"})
+
+    def status(self, payload):
+        (self.source / "training_status.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+
+    def matched(self):
+        return has_completed_same_data_run(
+            "data/train.jsonl", "data/eval.jsonl", repo_root=self.root
+        )
+
+    def test_completed_same_data_requires_approval_when_exact_reuse_fails(self):
+        self.assertTrue(self.matched())
+
+    def test_changed_data_does_not_trigger_same_data_block(self):
+        self.holdout.write_text('{"instruction":"new","response":"data"}\n',
+                                encoding="utf-8")
+        self.assertFalse(self.matched())
+
+    def test_skipped_historical_run_is_not_completed_training_evidence(self):
+        self.status({"status": "completed", "skipped_no_changes": True})
+        self.assertFalse(self.matched())
+
+    def test_failed_historical_run_is_not_completed_training_evidence(self):
+        self.status({"status": "failed"})
+        self.assertFalse(self.matched())
+
+    def test_cli_blocks_without_dispatch_approval(self):
+        run_dir = self.root / "reports/2026-10-25/run-456"
+        github_output = self.root / "github-output.txt"
+        argv = ["guard", "--run-dir", str(run_dir), "--github-output", str(github_output)]
+        with patch.object(sys, "argv", argv), \
+             patch.object(guard, "find_reusable_run", return_value=None), \
+             patch.object(guard, "has_completed_same_data_run", return_value=True):
+            guard.main()
+        self.assertEqual((run_dir / "status.txt").read_text().strip(),
+                         "BLOCKED_SAME_DATA_RETRAIN_REQUIRES_APPROVAL")
+        self.assertIn("blocked=true", github_output.read_text())
+        self.assertIn("reuse=false", github_output.read_text())
+        self.assertFalse((run_dir / "kaggle_output").exists())
+
+    def test_cli_explicit_approval_allows_guarded_path(self):
+        run_dir = self.root / "reports/2026-10-25/run-456"
+        github_output = self.root / "github-output.txt"
+        argv = ["guard", "--run-dir", str(run_dir), "--github-output",
+                str(github_output), "--approve-same-data-retrain"]
+        with patch.object(sys, "argv", argv), \
+             patch.object(guard, "find_reusable_run", return_value=None):
+            guard.main()
+        self.assertIn("blocked=false", github_output.read_text())
+        self.assertIn("reuse=false", github_output.read_text())
+        self.assertFalse((run_dir / "status.txt").exists())
+
+    def test_cli_explicit_approval_bypasses_even_exact_reuse(self):
+        """Approved manual retrain must not silently materialize old metrics."""
+        run_dir = self.root / "reports/2026-10-25/run-approved"
+        github_output = self.root / "approved-output.txt"
+        argv = ["guard", "--run-dir", str(run_dir), "--github-output",
+                str(github_output), "--approve-same-data-retrain"]
+        with patch.object(sys, "argv", argv), \
+             patch.object(guard, "find_reusable_run") as exact_reuse, \
+             patch.object(guard, "materialize_skip") as skip:
+            guard.main()
+        exact_reuse.assert_not_called()
+        skip.assert_not_called()
+        self.assertIn("blocked=false", github_output.read_text())
+        self.assertIn("reuse=false", github_output.read_text())
+        self.assertFalse((run_dir / "status.txt").exists())
+        self.assertFalse((run_dir / "kaggle_output").exists())
+
+    def test_workflow_guards_every_kaggle_submit_step(self):
+        workflow = (Path(__file__).resolve().parents[1] /
+                    ".github/workflows/daily-gpt2-training.yml").read_text(encoding="utf-8")
+        self.assertIn("approve_same_data_retrain:", workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertEqual(workflow.count(
+            "steps.reuse_guard.outputs.blocked != 'true'"), 4)
+        self.assertIn("--approve-same-data-retrain", workflow)
+
+    def test_failed_kernel_auto_retry_is_dispatch_only(self):
+        """Scheduled/push runs must not automatically retry terminal Kaggle failures."""
+        workflow = (Path(__file__).resolve().parents[1] /
+                    ".github/workflows/daily-gpt2-training.yml").read_text(encoding="utf-8")
+        self.assertIn("approve_failed_kernel_retry:", workflow)
+        self.assertIn(
+            "github.event_name == 'workflow_dispatch' && inputs.approve_failed_kernel_retry || false",
+            workflow,
+        )
+        self.assertIn('if [[ "$APPROVE_FAILED_KERNEL_RETRY" == "true" ]]', workflow)
+        self.assertIn('echo "BLOCKED_FAILED_KERNEL_REQUIRES_APPROVAL" > "$RUN_DIR/status.txt"', workflow)
+        self.assertIn("automatic retry refused pending review", workflow)
+        self.assertNotIn("Existing kernel has a terminal failure; submitting a fresh attempt.", workflow)
 
 
 if __name__ == "__main__":

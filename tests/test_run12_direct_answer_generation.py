@@ -51,7 +51,9 @@ class DirectAnswerGenerationTests(unittest.TestCase):
         row = build_row("base", "control", 0, "用户：保密\n助手：", [2, 0], FakeTokenizer())
         self.assertTrue(row["contains_chinese"])
         self.assertFalse(row["blank_output"])
-        self.assertEqual(row["safe_output_excerpt"], "好")
+        self.assertEqual(row["safe_output_excerpt"], "[REDACTED: raw output withheld]")
+        self.assertTrue(row["contains_chinese"])
+        self.assertNotIn("好", str(row["safe_output_excerpt"]))
         self.assertNotIn("保密", str(row))
 
     def test_summary_rejects_noncomparable_control(self):
