@@ -1,8 +1,12 @@
 """Tests for cloud-authoritative mentor context; fake cloud is not a live Supabase test."""
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
+from timecat import cloud_cli
 from timecat.cloud_memory import MemoryStore, SyncError, synchronize
 from timecat.mentor_context import load_approved_context
 
@@ -10,15 +14,22 @@ from timecat.mentor_context import load_approved_context
 class FakeCloud:
     def __init__(self):
         self.rows = {}
+        self.get_calls = 0
+        self.list_calls = 0
+        self.create_calls = 0
+        self.update_calls = 0
 
     def get(self, uid):
+        self.get_calls += 1
         row = self.rows.get(uid)
         return row.copy() if row else None
 
     def list_all(self):
+        self.list_calls += 1
         return [row.copy() for row in self.rows.values()]
 
     def create(self, entry):
+        self.create_calls += 1
         row = {
             key: entry[key]
             for key in (
@@ -33,6 +44,7 @@ class FakeCloud:
         return row.copy()
 
     def update(self, entry):
+        self.update_calls += 1
         row = self.rows.get(entry["id"])
         if row is None or row["revision"] != entry["remote_revision"]:
             raise SyncError("stale test revision")
@@ -63,6 +75,50 @@ class MentorContextTests(unittest.TestCase):
         self.first.close()
         self.tmp.cleanup()
 
+    def test_context_read_never_pushes_local_outbox(self):
+        proposed_id = self.first.propose(
+            "lesson", "pending proposed record", "local-proposed-fixture"
+        )
+        approved_id = self.first.propose(
+            "preference", "locally approved but not uploaded", "local-approved-fixture"
+        )
+        self.first.review(approved_id, True)
+        rejected_id = self.first.propose(
+            "fact", "locally rejected but not uploaded", "local-rejected-fixture"
+        )
+        self.first.review(rejected_id, False)
+
+        result = load_approved_context(self.cloud)
+
+        self.assertTrue(result["cloud_confirmed"])
+        self.assertEqual(result["records"], [])
+        self.assertEqual(result["read"]["remote_write_performed"], False)
+        self.assertEqual(self.cloud.rows, {})
+        self.assertEqual(self.cloud.get_calls, 0)
+        self.assertEqual(self.cloud.create_calls, 0)
+        self.assertEqual(self.cloud.update_calls, 0)
+        self.assertEqual(self.cloud.list_calls, 1)
+        self.assertEqual(self.first.counts()["unsynced"], 3)
+        self.assertEqual(
+            {proposed_id, approved_id, rejected_id},
+            {row["id"] for row in self.first.pending()},
+        )
+
+    def test_context_cli_does_not_initialize_local_database(self):
+        db_path = self.root / "context-read-only.sqlite"
+        with patch.object(
+            cloud_cli.SupabaseMemoryClient, "from_environment", return_value=self.cloud
+        ), patch.object(
+            cloud_cli, "load_approved_context", return_value={"cloud_confirmed": True, "records": []}
+        ):
+            with redirect_stdout(StringIO()):
+                exit_code = cloud_cli.main(
+                    ["--db", str(db_path), "context", "bobo师傅"]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertFalse(db_path.exists())
+
     def test_new_session_reads_only_approved_cloud_memory(self):
         memory_id = self.first.propose(
             "preference",
@@ -75,7 +131,7 @@ class MentorContextTests(unittest.TestCase):
 
         second = MemoryStore(self.root / "second.sqlite")
         try:
-            result = load_approved_context(second, self.cloud, "approved guidance")
+            result = load_approved_context(self.cloud, "approved guidance")
             self.assertTrue(result["cloud_confirmed"])
             self.assertEqual(result["authority"], "supabase_user_jwt_rls")
             self.assertEqual(len(result["records"]), 1)
@@ -98,7 +154,7 @@ class MentorContextTests(unittest.TestCase):
         self.first.review(rejected_id, False)
         synchronize(self.first, self.cloud)
 
-        result = load_approved_context(self.first, self.cloud, "secret phrase")
+        result = load_approved_context(self.cloud, "secret phrase")
         self.assertEqual(result["records"], [])
         self.assertIn(proposed_id, self.cloud.rows)
         self.assertIn(rejected_id, self.cloud.rows)
@@ -117,7 +173,7 @@ class MentorContextTests(unittest.TestCase):
                 ("tampered local guidance", memory_id),
             )
 
-        result = load_approved_context(self.first, self.cloud, "original approved")
+        result = load_approved_context(self.cloud, "original approved")
         self.assertEqual(len(result["records"]), 1)
         self.assertEqual(result["records"][0]["content"], "original approved guidance")
         self.assertNotIn("tampered", result["records"][0]["content"])
@@ -128,7 +184,7 @@ class MentorContextTests(unittest.TestCase):
         )
         self.first.review(memory_id, True)
         with self.assertRaises(SyncError):
-            load_approved_context(self.first, BrokenCloud(), "approved")
+            load_approved_context(BrokenCloud(), "approved")
         # The local record remains pending for later sync, but was not returned.
         self.assertEqual(self.first.counts()["unsynced"], 1)
 
@@ -143,7 +199,7 @@ class MentorContextTests(unittest.TestCase):
         self.first.review(other_id, True)
         synchronize(self.first, self.cloud)
 
-        result = load_approved_context(self.first, self.cloud, "准确召回")
+        result = load_approved_context(self.cloud, "准确召回")
         self.assertEqual([row["id"] for row in result["records"]], [match_id])
 
     def test_context_limit_is_bounded(self):
@@ -153,12 +209,12 @@ class MentorContextTests(unittest.TestCase):
             )
             self.first.review(uid, True)
         synchronize(self.first, self.cloud)
-        result = load_approved_context(self.first, self.cloud, "", 2)
+        result = load_approved_context(self.cloud, "", 2)
         self.assertEqual(len(result["records"]), 2)
 
     def test_invalid_query_type_is_rejected(self):
         with self.assertRaises(ValueError):
-            load_approved_context(self.first, self.cloud, None)
+            load_approved_context(self.cloud, None)
 
 
 if __name__ == "__main__":

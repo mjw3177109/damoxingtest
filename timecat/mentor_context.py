@@ -1,14 +1,14 @@
-"""Build fail-closed conversation context from cloud-confirmed approved memories.
+"""Build fail-closed conversation context from a read-only cloud snapshot.
 
-This module deliberately re-reads Supabase after synchronization and builds the
-context from that response, not from a possibly stale or locally modified cache.
-It never elevates proposed memories and never falls back to local recall.
+Context assembly must never synchronize or upload the local SQLite outbox.
+Explicit synchronization remains a separate command. This module only reads a
+fresh authenticated cloud snapshot and returns approved records.
 """
 from __future__ import annotations
 
 import uuid
 
-from .cloud_memory import SyncError, synchronize
+from .cloud_memory import SyncError
 
 _ALLOWED_KINDS = {"fact", "lesson", "goal", "preference", "event", "experiment"}
 _ALLOWED_STATUSES = {"proposed", "approved", "rejected"}
@@ -76,23 +76,20 @@ def _query_score(record, query):
     return hits if hits == len(terms) else 0
 
 
-def load_approved_context(store, cloud, query="", limit=10):
-    """Sync, re-read the authenticated cloud, and return approved records only.
+def load_approved_context(cloud, query="", limit=10):
+    """Read a fresh authenticated cloud snapshot and return approved records only.
 
-    Any auth, network, conflict, or validation failure raises; callers must not
-    silently substitute local-only recall. The cloud client must use the user's
-    JWT so Supabase RLS scopes the result to that user's records.
+    Any auth, network, or validation failure raises; callers must not silently
+    substitute local-only recall. The cloud client must use the user's JWT so
+    Supabase RLS scopes the result to that user's records. This function performs
+    no POST/PATCH and never reads or writes the local SQLite outbox.
     """
     if not isinstance(query, str):
         raise ValueError("query must be text")
     limit = max(1, min(100, int(limit)))
 
-    sync_result = synchronize(store, cloud)
-    if not isinstance(sync_result, dict) or sync_result.get("cloud_confirmed") is not True:
-        raise SyncError("cloud synchronization was not confirmed")
-
-    # Read a fresh authoritative snapshot after push/pull. Do not build prompts
-    # from the SQLite cache: it may contain stale or locally modified rows.
+    # Context construction is GET-only. Explicit synchronization is a separate
+    # command because it may upload proposed/approved/rejected local outbox rows.
     remote_rows = cloud.list_all()
     if not isinstance(remote_rows, list):
         raise SyncError("invalid cloud memory list response")
@@ -128,9 +125,9 @@ def load_approved_context(store, cloud, query="", limit=10):
         "authority": "supabase_user_jwt_rls",
         "cloud_confirmed": True,
         "query": query,
-        "sync": {
-            "uploaded": int(sync_result.get("uploaded", 0)),
+        "read": {
             "cloud_records_seen": len(normalized),
+            "remote_write_performed": False,
         },
         "records": records,
         "usage_policy": (
