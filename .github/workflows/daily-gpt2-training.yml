@@ -104,17 +104,17 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
 
       - name: Install Kaggle CLI
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.hold != 'true'
         run: python -m pip install --upgrade kaggle
 
       - name: Prepare kernel metadata
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.hold != 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
         run: python scripts/prepare_kaggle_kernel.py --username "$KAGGLE_USERNAME" --slug "$KAGGLE_KERNEL_SLUG"
 
       - name: Validate Kaggle title and kernel ID
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.hold != 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
         shell: bash
@@ -132,7 +132,7 @@ jobs:
           PY
 
       - name: Launch, monitor, and download
-        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true'
+        if: steps.preflight.outputs.kaggle_ready == 'true' && steps.reuse_guard.outputs.reuse != 'true' && steps.reuse_guard.outputs.hold != 'true'
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || 'mjw3177109' }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
@@ -151,23 +151,34 @@ jobs:
           printf 'Initial status check (exit %s): %s\n' "$STATUS_CODE" "$EXISTING_STATUS" | tee "$RUN_DIR/kaggle_initial_status.log"
 
           NEED_PUSH="false"
+          EXISTING_KERNEL_ACTIVE="false"
           FINAL="UNKNOWN"
-          if [[ "$STATUS_CODE" -eq 0 ]]; then
+          # Auth/rate-limit errors take precedence over a misleading COMPLETE
+          # or RUNNING string, even when the Kaggle CLI exits successfully.
+          if echo "$EXISTING_STATUS" | grep -Eqi '(^|[^0-9])(401|403|429)([^0-9]|$)|Forbidden|Unauthorized|Permission denied|rate limit|Too Many Requests'; then
+            echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
+            echo "Initial Kaggle status contains an auth/rate-limit error; refusing GPU submission."
+            exit 0
+          elif [[ "$STATUS_CODE" -eq 0 ]]; then
             if echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.COMPLETE|Status: COMPLETE|^COMPLETE$'; then
               NEED_PUSH="true"
               echo "Existing kernel is complete; submitting a fresh version to train the current repository code."
             elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(RUNNING|QUEUED|PENDING)|Status: (RUNNING|QUEUED|PENDING)'; then
               FINAL="RUNNING"
+              EXISTING_KERNEL_ACTIVE="true"
               echo "Existing kernel is active; monitoring it without duplicate submission."
             elif echo "$EXISTING_STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
-              NEED_PUSH="true"
-              echo "Existing kernel has a terminal failure; submitting a fresh attempt."
+              # A terminal failure is not authorization to spend more GPU.
+              # Require independent review before any future retry.
+              echo "KAGGLE_RETRY_REQUIRES_REVIEW" > "$RUN_DIR/status.txt"
+              echo "Existing kernel failed or was cancelled; refusing automatic GPU retry."
+              exit 0
             else
               echo "KAGGLE_STATUS_FAILED" > "$RUN_DIR/status.txt"
               echo "Status response was not a recognized Kaggle kernel state; refusing duplicate submission."
               exit 0
             fi
-          elif echo "$EXISTING_STATUS" | grep -Eqi '404|Not Found|not found|does not exist|No such kernel'; then
+          elif echo "$EXISTING_STATUS" | grep -Eqi '(^|[^0-9])404([^0-9]|$)|kernel.*not found|No such kernel|does not exist'; then
             NEED_PUSH="true"
             echo "No existing kernel found at the canonical ID; creating the first run."
           else
@@ -194,13 +205,15 @@ jobs:
               STATUS_CODE=$?
               printf '[%s] (exit %s) %s\n' "$ATTEMPT" "$STATUS_CODE" "$STATUS" >> "$RUN_DIR/kaggle_status.log"
               echo "Kaggle status $ATTEMPT: $STATUS"
+              # Authentication/rate-limit errors take precedence even when a
+              # CLI wrapper exits 0 or includes a misleading COMPLETE string.
+              if echo "$STATUS" | grep -Eqi '(^|[^0-9])(401|403|429)([^0-9]|$)|Forbidden|Unauthorized|Permission denied|rate limit|Too Many Requests'; then
+                FINAL="KAGGLE_STATUS_FAILED"; break
+              fi
               if [[ "$STATUS_CODE" -eq 0 ]] && echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.COMPLETE|Status: COMPLETE|^COMPLETE$'; then
                 FINAL="COMPLETE"; break
               fi
               if echo "$STATUS" | grep -Eqi 'KernelWorkerStatus\.(ERROR|FAILED|CANCELLED)|Status: (ERROR|FAILED|CANCELLED)'; then
-                FINAL="KAGGLE_STATUS_FAILED"; break
-              fi
-              if [[ "$STATUS_CODE" -ne 0 ]] && echo "$STATUS" | grep -Eqi '403|Permission denied|unauthorized|401'; then
                 FINAL="KAGGLE_STATUS_FAILED"; break
               fi
               sleep 60
@@ -220,6 +233,13 @@ jobs:
               echo "KAGGLE_OUTPUT_UNAVAILABLE" > "$RUN_DIR/status.txt"
             fi
           fi
+          # An already-running remote kernel may belong to a different commit
+          # or dataset. Keep its output for review, but never label it as a
+          # fresh training success without verified provenance.
+          if [[ "$EXISTING_KERNEL_ACTIVE" == "true" && "$(cat "$RUN_DIR/status.txt")" == "COMPLETE" ]]; then
+            echo "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED" > "$RUN_DIR/status.txt"
+            echo "Existing kernel finished, but its code/data provenance was not verified; manual review required."
+          fi
           exit 0
 
       - name: Candidate quality gate and approved-adapter promotion
@@ -234,6 +254,15 @@ jobs:
           run_dir = Path(os.environ["RUN_DIR"])
           statuses = sorted(run_dir.joinpath("kaggle_output").rglob("training_status.json"))
           reasons = []
+          # An adopted remote kernel may belong to a different code/data snapshot.
+          # Even plausible metrics and samples cannot pass the current-run gate.
+          source_unverified = (
+              (run_dir / "status.txt").is_file()
+              and (run_dir / "status.txt").read_text(encoding="utf-8").strip()
+              == "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED"
+          )
+          if source_unverified:
+              reasons.append("Existing Kaggle kernel provenance unverified; quality evidence cannot be attributed to this run.")
           metrics = {}
           samples = []
           status = {}
@@ -284,7 +313,8 @@ jobs:
           gate = {
               "checked_at_utc": datetime.now(timezone.utc).isoformat(),
               "run_id": os.environ.get("GITHUB_RUN_ID"),
-              "candidate_status": "skipped_no_changes" if status.get("skipped_no_changes") else status.get("status", "missing"),
+              "candidate_status": "source_unverified" if source_unverified else ("skipped_no_changes" if status.get("skipped_no_changes") else status.get("status", "missing")),
+              "existing_kernel_provenance_unverified": source_unverified,
               "evidence_reused": bool(status.get("skipped_no_changes")),
               "automated_precheck_passed": automated_precheck_passed,
               "human_review_status": "pending",
