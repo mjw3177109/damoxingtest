@@ -3,6 +3,7 @@ import argparse
 import json
 import sys
 from .cloud_memory import MemoryStore, SupabaseMemoryClient, synchronize, SyncError
+from .mentor_context import load_approved_context
 
 def main(argv=None):
     p=argparse.ArgumentParser(description="TimeCat V2 private memory")
@@ -15,7 +16,9 @@ def main(argv=None):
     x.add_argument("--source",required=True)
     x=sub.add_parser("review")
     x.add_argument("id");x.add_argument("decision",choices=["approve","reject"])
-    x=sub.add_parser("recall")
+    x=sub.add_parser("recall",help="Local-only recall; not authoritative for a new conversation")
+    x.add_argument("query",nargs="?",default="");x.add_argument("--limit",type=int,default=10)
+    x=sub.add_parser("context",help="Sync and re-read cloud-approved memories; fails closed if cloud access fails")
     x.add_argument("query",nargs="?",default="");x.add_argument("--limit",type=int,default=10)
     args=p.parse_args(argv)
     db=MemoryStore(args.db)
@@ -28,6 +31,7 @@ def main(argv=None):
             value={"reviewed":args.id,"decision":args.decision}
         elif args.cmd=="recall":value=db.recall(args.query,args.limit)
         elif args.cmd=="sync":value=synchronize(db,SupabaseMemoryClient.from_environment())
+        elif args.cmd=="context":value=load_approved_context(db,SupabaseMemoryClient.from_environment(),args.query,args.limit)
         print(json.dumps(value,ensure_ascii=False,indent=2))
     except (SyncError, ValueError) as exc:
         print("TimeCat: "+str(exc),file=sys.stderr)
