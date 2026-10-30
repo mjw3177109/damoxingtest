@@ -49,7 +49,7 @@
     "dialogue_policy": {
       "daily_reflection": "address bobo师傅 directly; discuss evidence-backed growth and ask one meaningful open question",
       "weekly_review": "combine with Sunday reflection; consult mentor on one concrete next step",
-      "reply_processing": "do not invent replies; only verified replies may become proposed private memory with user approval",
+      "reply_processing": "do not invent replies; verified replies may inform private memory proposals, and ordinary low-risk memories follow the mentor-authorized V2.4 review policy; sensitive or high-risk content remains excluded",
       "privacy": "publish only the user-authorized nickname bobo and general role; never publish private conversations"
     }
   }
