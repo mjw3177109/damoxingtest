@@ -10,9 +10,9 @@
 
 timecat/mentor_context.py 提供 load_approved_context()：
 
-1. 使用用户 JWT 执行现有 V2 同步，推送本地 outbox 并拉取云端状态。
-2. 要求同步结果明确返回 cloud_confirmed=true。
-3. 再次读取 Supabase 云端记录，使用这份新鲜响应构造上下文，而不是使用 SQLite 缓存。
+1. 使用当前用户 JWT 直接向 Supabase 只读获取最新云端记录，不执行本地 outbox 同步或上传。
+2. 验证云端读取响应及每条记录的必要字段；认证或网络失败时立即报错。
+3. 使用这份新鲜云端响应构造上下文，不读取 SQLite 缓存，也不调用 synchronize()。
 4. 校验 ID、分类、内容、来源、状态、revision 和时间戳。
 5. 只返回 approved 记录；proposed 与 rejected 永远不进入对话上下文。
 6. 按确定性的文本匹配筛选，并输出 id、source、updated_at、revision 供审计。
