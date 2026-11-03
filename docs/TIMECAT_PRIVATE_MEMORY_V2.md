@@ -1,5 +1,13 @@
 # TimeCat V2 私人记忆双端同步：安装、限制和验收
 
+## 部署与验收状态更新（2026-10-29，北京时间）
+
+- **V2 代码**：PR #77 已合并到 `main`；本地/模拟双端同步与 RLS 相关代码已具备，静态 CI 通过不等于线上服务验收。
+- **专属云库**：用户指定的 TimeCat-Memory Supabase 项目已创建且状态健康；`public.timecat_memory_v2` 的 RLS 与基础权限已检查。只允许使用此专属项目，不得扫描其他项目或用管理员权限代替用户身份。
+- **真实 Auth E2E**：师傅在本机运行独立验收程序并提交 `result=PASS`、`auth_sessions=2`、`created=true`、`remote_approval_verified=true`、`cleanup=verified`。这是**用户提交的双会话验收证据，尚未由本仓库 CI 独立复核**，不含密码、JWT、邮箱或私聊。
+- **仍未上线**：ChatGPT 每小时/每日任务尚无经用户授权、可安全续期的普通用户连接；无法自动读取 approved 私人记忆或把对话回复写为待审记忆。不得声称生产自动同步已上线。
+- **安全待办**：Auth 泄露密码防护仍有告警；JWT 安全续期、离线冲突与删除/恢复验收、最小权限后台网关仍待实现。PR #79 网页入口待审核，不能视为已发布。
+
 ## 已实现的部分
 - 本地 SQLite 私人记忆仓库：标准库、UUID 跨设备主键、提议→人工批准/拒绝、可验证来源、只召回 approved，重启可恢复。
 - Supabase PostgREST：只接受 HTTPS、用户 JWT、publishable key；不允许把 service_role 当用户密钥；基于 ID 和 revision 的冲突检测、离线待同步队列与幂等同步。
@@ -36,7 +44,7 @@ python -m timecat.cloud_cli recall bobo
 如果云端不可达，本地 outbox 可以保存，但不可声称“已同步”；最终报告要明确未同步状态。
 
 ## 还未实现的功能
-- 真正 Supabase 项目的迁移部署、云端读写验收、自动化连接（需用户确认项目/组织和访问方式）。
+- 专属 Supabase 项目与 RLS 已部署；师傅已提交真实 Auth E2E PASS（待独立复核）；**自动化持久授权连接尚未实现**。
 - Supabase JWT 自动续期与真正永远在线的同步 Worker。
 - 私人数据的导出、彻底删除、备份与冲突 UI；上线前需补齐。
 - 语义向量检索、多模型长期记忆检索增强。
