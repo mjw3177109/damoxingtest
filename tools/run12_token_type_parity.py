@@ -13,11 +13,20 @@ from generation_decode_probe import (
 
 
 def make_inputs(tokenizer, prompt, setting):
-    if setting not in ("original", "train_parity"):
+    if setting not in ("original", "train_parity", "train_exact"):
         raise ValueError("Unknown setting")
-    result = dict(tokenizer(prompt, return_tensors="pt"))
+    # Keep the historical token_type-only comparison unchanged.  A distinct
+    # mode is needed for *actual* training parity, which also omits automatic
+    # special tokens (see scripts/train_gpt2_lora.py).
+    if setting == "train_exact":
+        result = dict(tokenizer(prompt, add_special_tokens=False, return_tensors="pt"))
+    else:
+        result = dict(tokenizer(prompt, return_tensors="pt"))
     if "input_ids" not in result or "attention_mask" not in result:
         raise ValueError("Missing essential tokenizer tensors")
+    if setting == "train_exact":
+        result.pop("token_type_ids", None)
+        return result
     if "token_type_ids" not in result:
         raise ValueError("Tokenizer did not return token_type_ids; no controlled difference")
     if result["token_type_ids"].shape != result["input_ids"].shape:

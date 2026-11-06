@@ -1,0 +1,103 @@
+name: GPT-2 Run 12 Train-Exact Pair CPU
+
+# One-shot, branch-scoped, CPU-only diagnostic. No automatic report retrigger.
+# No Kaggle submission, training, GPU allocation, or model promotion.
+on:
+  push:
+    branches: [fix/reuse-training-config-20261025-22]
+    paths:
+      - ".github/workflows/run12-train-exact-pair-cpu.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gpt2-run12-train-exact-pair-cpu-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  paired-exact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile and run eight offline tests before inference
+        run: |
+          python -m py_compile tools/run12_train_exact_pair_cpu.py tests/test_run12_train_exact_pair_cpu.py
+          python -m unittest discover -s tests -p test_run12_train_exact_pair_cpu.py -v
+      - name: Retrieve rejected Run 12 Adapter without Kaggle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run12-source"
+          gh run download 39921870784 --repo "$GITHUB_REPOSITORY" \
+            --name gpt2-training-39921870784 --dir "$RUNNER_TEMP/run12-source"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "run12-source"
+          matches = [p.parent for p in root.rglob("adapter_config.json")
+                     if "/run-39921870784/kaggle_output/training_output/adapter/" in "/" + p.as_posix()]
+          if len(matches) != 1:
+              raise RuntimeError(f"Expected one Run 12 Adapter, found {len(matches)}")
+          adapter = matches[0]
+          if not (adapter / "adapter_model.safetensors").is_file():
+              raise RuntimeError("Run 12 weights missing")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
+              stream.write("RUN12_ADAPTER_DIR=" + str(adapter) + "\n")
+          PY
+      - name: Install pinned CPU-only inference dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --no-cache-dir 'torch==2.5.1' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-cache-dir 'transformers==4.46.3' 'peft==0.13.2' 'accelerate==1.1.1'
+      - name: Compare historical train_parity and exact training inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/train-exact-pair"
+          python tools/run12_train_exact_pair_cpu.py \
+            --adapter "$RUN12_ADAPTER_DIR" \
+            --eval-data data/safety_humanity_eval_v1.jsonl \
+            --output "$RUNNER_TEMP/train-exact-pair/train_exact_pair.json"
+      - name: Verify provenance, privacy whitelist and no promotion
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=tools python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from run12_train_exact_pair_cpu import ROW_FIELDS, summarize
+          path = Path(os.environ["RUNNER_TEMP"]) / "train-exact-pair/train_exact_pair.json"
+          report = json.loads(path.read_text(encoding="utf-8"))
+          assert report["source_gpu_run_id"] == 39921870784
+          assert report["adapter_sha256"] == "979a0410327cd191b6dceace4ac0985c81fdc4448c3e200aea9d5803c8036d7c"
+          assert report["holdout_sha256"] == "5d0c93dc919767bd9bb19729b8eecb68bbfd557d9ee1376e12f8aba072bff41f"
+          assert report["device"] == "cpu"
+          assert report["gpu_training_performed"] is False
+          assert report["promotion_approved"] is False
+          rows = report["per_prompt_numeric_diagnostics"]
+          assert len(rows) == 20 and all(set(row).issubset(ROW_FIELDS) for row in rows)
+          assert summarize(rows) == report["summary"]
+          assert all(report["summary"][arm]["n"] == 10 for arm in ("train_parity", "train_exact"))
+          print("PASS: 20 CPU-only paired generations, numeric-only artifact, no promotion")
+          PY
+      - name: Upload numeric-only CPU evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run12-train-exact-pair-${{ github.run_id }}
+          path: ${{ runner.temp }}/train-exact-pair/
+          if-no-files-found: error
+          retention-days: 30
