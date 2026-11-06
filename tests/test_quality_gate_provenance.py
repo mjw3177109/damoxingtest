@@ -23,12 +23,14 @@ def gate_code():
 
 
 class QualityGateProvenanceTests(unittest.TestCase):
-    def evaluate(self, skipped, adapter):
+    def evaluate(self, skipped, adapter, run_status=None):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             run_dir = root / "run"
             output = run_dir / "kaggle_output" / "training_output"
             output.mkdir(parents=True)
+            if run_status is not None:
+                (run_dir / "status.txt").write_text(run_status + "\n", encoding="utf-8")
             (output / "training_status.json").write_text(
                 json.dumps({"status": "completed", "skipped_no_changes": skipped}),
                 encoding="utf-8",
@@ -78,6 +80,20 @@ class QualityGateProvenanceTests(unittest.TestCase):
         self.assertEqual(gate["candidate_status"], "completed")
         self.assertIn("LoRA adapter files missing", gate["reasons"])
         self.assertFalse(promoted)
+
+    def test_adopted_kernel_outputs_fail_closed_even_when_remote_metrics_look_good(self):
+        for skipped in (False, True):
+            with self.subTest(remote_skipped=skipped):
+                gate, promoted = self.evaluate(
+                    skipped=skipped, adapter=True,
+                    run_status="KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED",
+                )
+                self.assertFalse(gate["automated_precheck_passed"])
+                self.assertFalse(gate["promotion_approved"])
+                self.assertFalse(promoted)
+                self.assertEqual(gate["candidate_status"], "source_unverified")
+                self.assertTrue(gate["existing_kernel_provenance_unverified"])
+                self.assertTrue(any("provenance unverified" in reason for reason in gate["reasons"]))
 
     def test_real_valid_candidate_requires_independent_review(self):
         gate, promoted = self.evaluate(skipped=False, adapter=True)
