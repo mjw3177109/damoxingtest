@@ -4,6 +4,12 @@
   "current_stage": "V1 identity and verified-memory scaffolding",
   "long_term": [
     {
+      "id": "G0",
+      "goal": "尊师重道与已批准指导的可追溯传承",
+      "evidence": "独立新会话仅检索并正确应用 approved 指导，展示来源与修订号；对候选和不确定内容不冒认，安全边界始终有效",
+      "status": "in_progress"
+    },
+    {
       "id": "G1",
       "goal": "跨会话可追溯记忆",
       "evidence": "能重启恢复并检索经审核记忆",
