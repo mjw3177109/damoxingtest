@@ -5,6 +5,7 @@ Uses the existing training-recipe/data hash contract. Never starts a model,
 reads credentials, changes checkpoints, or treats reused metrics as new.
 """
 import argparse
+import hashlib
 import json
 import sys
 from datetime import datetime, timezone
@@ -16,6 +17,36 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from train_gpt2_lora import find_reusable_run  # noqa: E402
 
 REQUIRED = ("metrics.json", "samples.json", "run_metadata.json", "summary.md")
+
+
+def has_completed_same_data_run(data, eval_data, repo_root=ROOT):
+    """Find historical GPU evidence for the same data without trusting recipe reuse.
+
+    A script-only guard fix changes the legacy whole-file recipe hash. In that
+    case a failed exact reuse check must NOT silently authorize a new GPU run.
+    This conservative check is read-only; approval is separate from promotion.
+    """
+    root = Path(repo_root).resolve()
+    train = Path(data)
+    holdout = Path(eval_data)
+    train = train if train.is_absolute() else root / train
+    holdout = holdout if holdout.is_absolute() else root / holdout
+    if not train.is_file() or not holdout.is_file():
+        return False
+    train_sha = hashlib.sha256(train.read_bytes()).hexdigest()
+    eval_sha = hashlib.sha256(holdout.read_bytes()).hexdigest()
+    for path in sorted(root.glob("reports/*/run-*/run_metadata.json"), reverse=True):
+        try:
+            metadata = json.loads(path.read_text(encoding="utf-8"))
+            if (metadata.get("training_data_sha256") != train_sha
+                    or metadata.get("eval_data_sha256") != eval_sha):
+                continue
+            status = json.loads((path.parent / "training_status.json").read_text(encoding="utf-8"))
+            if status.get("status") == "completed" and not status.get("skipped_no_changes"):
+                return True
+        except (OSError, ValueError, TypeError):
+            continue
+    return False
 
 
 def write_json(path, value):
@@ -86,18 +117,37 @@ def main():
     parser.add_argument("--eval-data", default="data/safety_humanity_eval_v1.jsonl")
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--github-output", type=Path, required=True)
+    parser.add_argument("--approve-same-data-retrain", action="store_true",
+                        help="Explicit workflow_dispatch approval after reviewing changed recipe")
     args = parser.parse_args()
-    candidate = find_reusable_run(SimpleNamespace(
-        data=args.data, eval_data=args.eval_data, force_retrain=False
-    ))
+    # An explicit manual retrain approval must not silently reuse an exact
+    # historical match. The workflow still performs its remote Kaggle checks.
+    candidate = None if args.approve_same_data_retrain else find_reusable_run(
+        SimpleNamespace(data=args.data, eval_data=args.eval_data, force_retrain=False)
+    )
     reuse = candidate is not None
+    blocked = (not reuse and not args.approve_same_data_retrain
+               and has_completed_same_data_run(args.data, args.eval_data))
     if reuse:
         source = materialize_skip(candidate["run_dir"], args.run_dir)
         print("SKIPPED_NO_CHANGES before Kaggle submission; historical source:", source)
+    elif blocked:
+        args.run_dir.mkdir(parents=True, exist_ok=True)
+        (args.run_dir / "status.txt").write_text(
+            "BLOCKED_SAME_DATA_RETRAIN_REQUIRES_APPROVAL\n", encoding="utf-8"
+        )
+        write_json(args.run_dir / "reuse_guard_decision.json", {
+            "decision": "blocked",
+            "reason": "Same-data completed training exists but exact recipe/config reuse failed.",
+            "kaggle_kernel_submitted": False,
+            "approval_required": "workflow_dispatch approve_same_data_retrain",
+        })
+        print("BLOCKED: same-data retrain needs explicit approval; no Kaggle submission.")
     else:
-        print("No completed matching data/recipe evidence; normal guarded Kaggle path applies.")
+        print("No reusable evidence or explicit approval; normal guarded Kaggle path applies.")
     with args.github_output.open("a", encoding="utf-8") as handle:
         handle.write("reuse=" + ("true" if reuse else "false") + "\n")
+        handle.write("blocked=" + ("true" if blocked else "false") + "\n")
 
 
 if __name__ == "__main__":
