@@ -61,7 +61,8 @@ def main():
     metrics = read_json(run_dir / "metrics.json") if (run_dir / "metrics.json").exists() else {}
     metadata = read_json(run_dir / "run_metadata.json") if (run_dir / "run_metadata.json").exists() else {}
     samples = read_json(run_dir / "samples.json") if (run_dir / "samples.json").exists() else []
-    skipped = bool(training_status.get("skipped_no_changes"))
+    unverified_existing = status == "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED"
+    skipped = bool(training_status.get("skipped_no_changes")) or unverified_existing
     if skipped:
         # Reused historical stage files must not masquerade as stages executed now.
         for stage_file in (run_dir / "stages").glob("*.md"):
@@ -70,7 +71,7 @@ def main():
 
     if status == "BLOCKED_MISSING_KAGGLE_SECRETS":
         final_status = "BLOCKED_MISSING_KAGGLE_SECRETS"
-    elif status in ("KAGGLE_PUSH_FAILED", "TIMEOUT", "KAGGLE_STATUS_FAILED", "KAGGLE_OUTPUT_UNAVAILABLE"):
+    elif status in ("KAGGLE_PUSH_FAILED", "TIMEOUT", "KAGGLE_STATUS_FAILED", "KAGGLE_OUTPUT_UNAVAILABLE", "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED"):
         final_status = status
     elif training_status.get("status") == "failed":
         final_status = "TRAINING_FAILED"
@@ -95,15 +96,23 @@ def main():
         report.append("- 模型与完整输出 Artifact： https://github.com/" + repository + "/actions/runs/" + run_id + "/artifacts")
     report.append("- Kaggle 任务状态： " + status)
     report.append("- 最终判定： **" + final_status + "**")
-    if training_status.get("skipped_no_changes"):
+    if final_status == "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED":
+        report.append("- 本次训练动作：仅监控已存在的远端 Kernel；代码、数据和配置来源未核实，不能认定本轮训练成功或确实跳过训练。")
+        report.append("- 远端下载的指标和样例仅供审查，不得归属当前 GitHub Run。")
+    elif training_status.get("skipped_no_changes"):
         report.append("- 本次训练动作：跳过重复训练；复用已有指标与样例，未进行新的 GPU 参数更新。")
         report.append("- 复用来源： " + str(training_status.get("reused_from_run", "历史成功运行")))
+    elif final_status == "BLOCKED_INFERENCE_ONLY_CHANGE":
+        report.append("- 本次训练动作：已审计的仅推理代码改动触发安全阻断；未提交 Kaggle、未执行 GPU 训练或新评估。")
     report.append("")
-    report.append("## 历史复用指标（本轮未训练或重新评估）" if skipped else "## 本次结果")
+    report.append("## 来源未核实的远端指标（不得归属本轮）" if unverified_existing else ("## 历史复用指标（本轮未训练或重新评估）" if skipped else "## 本次结果"))
     report.append("")
     if metrics:
         if skipped:
-            report.append("- 指标来源： " + str(training_status.get("reused_from_run", "历史运行")) + "；以下指标不是本次新测量。")
+            if final_status == "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED":
+                report.append("- 指标来源：已有远端 Kernel，来源未核实；以下指标不得计为本次新测量。")
+            else:
+                report.append("- 指标来源： " + str(training_status.get("reused_from_run", "历史运行")) + "；以下指标不是本次新测量。")
         report.extend([
             "- 基础模型： " + str(metrics.get("model_name", metadata.get("model_name", "未知"))),
             "- GPU： " + ("本轮未使用；历史来源：" + str(metadata.get("source_run_gpu_name", "未知")) if skipped else str(metrics.get("gpu_name", metadata.get("gpu_name", "未知")))),
@@ -122,7 +131,7 @@ def main():
         if skipped:
             report.append("## 整体评价")
             report.append("")
-            report.append("本次未进行新的训练或评估；以上 Loss、PPL 和生成样例均为历史证据，不得视为本轮改进。")
+            report.append("已有远端 Kernel 的来源未核实；以上 Loss、PPL 和样例不能归属本轮。" if final_status == "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED" else "本次未进行新的训练或评估；以上 Loss、PPL 和生成样例均为历史证据，不得视为本轮改进。")
         elif isinstance(change, (int, float)) and change > 0:
             report.append("## 整体评价")
             report.append("")
@@ -136,7 +145,10 @@ def main():
             report.append("")
             report.append("当前指标没有显示明确的验证集 loss 改善。需要结合训练日志、生成样例和后续更可靠的测试集继续判断。")
     else:
-        report.append("没有找到有效的 metrics.json，因此不能声称本次模型训练和评估成功。")
+        if final_status == "BLOCKED_INFERENCE_ONLY_CHANGE":
+            report.append("安全阻断按预期未生成 metrics.json 或 samples.json；没有新训练或模型质量证据。")
+        else:
+            report.append("没有找到有效的 metrics.json，因此不能声称本次模型训练和评估成功。")
         if training_status.get("error"):
             report.append("")
             report.append("训练错误类型： " + str(training_status.get("error_type", "未知")))
@@ -145,7 +157,10 @@ def main():
         report.append("")
         report.append("## 整体评价")
         report.append("")
-        report.append("本次运行没有足够的实测指标支持模型质量结论。请先解决凭据、GPU、配额、网络或训练脚本问题，再重新运行。")
+        if final_status == "BLOCKED_INFERENCE_ONLY_CHANGE":
+            report.append("本次是主动防止重复 GPU 提交的预期安全阻断，不是训练失败，也不是模型改进。")
+        else:
+            report.append("本次运行没有足够的实测指标支持模型质量结论。请先解决凭据、GPU、配额、网络或训练脚本问题，再重新运行。")
 
     report.append("")
     report.append("## 候选模型晋级门槛")
@@ -162,7 +177,7 @@ def main():
     report.append("## 阶段记录" if not skipped else "## 本轮阶段记录（未执行训练）")
     report.append("")
     if skipped:
-        report.append("本次未执行训练阶段；历史阶段说明仅保留在来源归档中，不属于本轮成果。")
+        report.append("已有远端 Kernel 的训练阶段来源未核实，不得归属本轮。" if final_status == "KAGGLE_EXISTING_KERNEL_REVIEW_REQUIRED" else "本次未执行训练阶段；历史阶段说明仅保留在来源归档中，不属于本轮成果。")
     elif stage_files:
         for stage_name in sorted(set(stage_files)):
             report.append("- stages/" + stage_name)
@@ -172,7 +187,8 @@ def main():
     report.append("## 模型输出与日志")
     report.append("")
     if "samples.json" in copied and isinstance(samples, list):
-        report.append(("- 已保存历史复用生成样例： " if skipped else "- 已保存生成样例： ") + "samples.json（" + str(len(samples)) + " 条）")
+        sample_label = "- 已保存来源未核实的远端样例： " if unverified_existing else ("- 已保存历史复用生成样例： " if skipped else "- 已保存生成样例： ")
+        report.append(sample_label + "samples.json（" + str(len(samples)) + " 条）")
     else:
         report.append("- 没有找到 samples.json。")
     for name in ["training.log", "metrics.json", "run_metadata.json", "training_status.json", "summary.md"]:
@@ -190,6 +206,10 @@ def main():
     report.append("")
     if final_status == "SKIPPED_NO_CHANGES":
         report.append("本次训练集、评估集和训练方案与最近一次完整运行一致，因此跳过重复 GPU 训练。新增数据或训练方案发生变化后再启动新训练。")
+    elif final_status == "BLOCKED_INFERENCE_ONLY_CHANGE":
+        report.append("1. 独立审查本次精确版本匹配的 GPU 阻断保护，确认训练代码、数据与依赖未发生未经审核的变化。")
+        report.append("2. 使用历史固定模型与固定提示词开展 CPU 推理对照，不将历史 Loss 或样例冒充本轮结果。")
+        report.append("3. 在质量审核、Kaggle 配额和远端并发状态核实前，不启动新的 GPU 训练或批准模型晋级。")
     elif final_status == "SUCCESS":
         report.append("1. 人工复核 samples.json，检查事实性、隐私、伤害风险、偏见和是否遵循指令。")
         report.append("2. 比较验证集指标与上一版本，不因单次 loss 变化就直接宣称模型进步。")

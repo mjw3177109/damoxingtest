@@ -8,6 +8,7 @@ on:
       - "tools/**"
       - "tests/**"
       - ".github/workflows/gpt2-static-preflight.yml"
+      - ".github/workflows/daily-gpt2-training.yml"
   workflow_dispatch:
 
 permissions:
